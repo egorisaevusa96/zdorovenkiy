@@ -1,0 +1,12 @@
+# Сервер-посредник «Здаровенький ИИ» на Cloudflare Workers.
+# Секреты (НЕ пишите их сюда!) задаются командами:
+#   npx wrangler secret put ANTHROPIC_API_KEY   — ключ Claude API
+#   npx wrangler secret put FAMILY_CODE         — семейный пароль, который вы впишете в настройках сайта
+name = "zdorovenkiy-ai"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Модель Claude
+MODEL = "claude-opus-5-5"

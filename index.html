@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Здаровенький</title>
+  <meta name="description" content="Здоровый образ жизни для всей семьи: вода, еда, спорт, сон, вес и привычки.">
+  <meta name="theme-color" content="#f3f7f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111814" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Здаровенький">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <a id="back" class="back" href="#/more" hidden>‹</a>
+    <h1 id="title">Здаровенький</h1>
+    <div id="datebar" class="datebar"></div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav id="tabs" class="tabs">
+    <a href="#/today" data-tab="today"><span class="ic">🏠</span><span class="lb"></span></a>
+    <a href="#/food" data-tab="food"><span class="ic">🍽️</span><span class="lb"></span></a>
+    <a href="#/sport" data-tab="sport"><span class="ic">🏃</span><span class="lb"></span></a>
+    <a href="#/sleep" data-tab="sleep"><span class="ic">🌙</span><span class="lb"></span></a>
+    <a href="#/more" data-tab="more"><span class="ic">☰</span><span class="lb"></span></a>
+  </nav>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-act="sheet-close"></div>
+    <div class="sheet-body" role="dialog" aria-modal="true"></div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <noscript>Для работы программы включите JavaScript.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

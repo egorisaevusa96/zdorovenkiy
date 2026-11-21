@@ -1,0 +1,245 @@
+// Меню на неделю, ограничения в питании и список покупок.
+import { data, todayKey, addDays, uid } from './store.js';
+import { RECIPES, ING, SECTIONS } from './recipes.js';
+import { kcalGoal } from './health.js';
+import { nm } from './i18n.js';
+import { fmtAmount } from './units.js';
+
+export const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_SHARE = { breakfast: 0.25, lunch: 0.35, dinner: 0.3, snack: 0.1 };
+
+// ---------- Рецепты (встроенные + свои) ----------
+function normCustom(r) {
+  const sv = Math.max(1, r.servings || 1);
+  return {
+    id: r.id, custom: true, cuisine: 'own', emoji: r.emoji || '🍲', name: r.name, meals: r.meals || [],
+    time: r.time || 0, kcal: r.kcal || 0, servings: sv,
+    ings: (r.ings || []).map(i => ({ custom: true, name: i.name, q: i.q ? i.q / sv : 0, u: i.u })),
+    steps: (r.steps || []).map(s => ({ ru: s, en: s })),
+  };
+}
+export const allRecipes = () => [...RECIPES, ...data.recipes.map(normCustom)];
+
+// Рецепты из меню от ИИ: живут внутри самого меню (количества — на 1 порцию)
+function normAi(r) {
+  return {
+    id: r.id, ai: true, cuisine: 'ai', emoji: r.emoji || '🍲', name: r.name, meals: r.meals || [],
+    time: r.time || 0, kcal: r.kcal || 0, servings: 1,
+    ings: (r.ings || []).map(i => {
+      const taste = i.u === 'taste' || !i.q;
+      return { custom: true, name: i.name, q: taste ? 0 : i.q, u: taste ? 'taste' : i.u, sec: SECTIONS.includes(i.sec) ? i.sec : 'other' };
+    }),
+    steps: (r.steps || []).map(s => ({ ru: s, en: s })),
+  };
+}
+export const planRecipes = () => (data.plan?.recipes || []).map(normAi);
+export const recipeById = id => allRecipes().find(r => r.id === id) || planRecipes().find(r => r.id === id) || null;
+
+// Ответ ИИ → наше меню на 7 дней
+export function planFromAi(res, { servings, meals }) {
+  const id = uid();
+  const start = todayKey();
+  const map = {};
+  const recipes = res.recipes.map(r => {
+    const nid = `ai-${id}-${r.id}`;
+    map[r.id] = nid;
+    return {
+      id: nid, emoji: String(r.emoji || '🍲').slice(0, 4), name: String(r.name || '').slice(0, 80),
+      meals: (r.meals || []).filter(m => MEALS.includes(m)),
+      time: Math.max(0, Math.round(r.time) || 0), kcal: Math.max(0, Math.round(r.kcal) || 0),
+      ings: (r.ings || []).slice(0, 30), steps: (r.steps || []).slice(0, 12),
+    };
+  });
+  const days = res.days.slice(0, 7).map((d, i) => ({
+    date: addDays(start, i),
+    items: Object.fromEntries(meals.map(m => [m, map[d[m]] || null])),
+    eaten: {},
+  }));
+  // Если ИИ забыл указать, к какому приёму подходит блюдо — берём из меню
+  for (const r of recipes) {
+    if (r.meals.length) continue;
+    r.meals = meals.filter(m => days.some(d => d.items[m] === r.id));
+  }
+  return { id, start, servings, meals, days, createdAt: new Date().toISOString(), ai: true, note: res.note || '', recipes };
+}
+
+// ---------- Аллергии и «не ем» из профиля ----------
+const TAG_WORDS = {
+  fish: ['рыб', 'fish', 'лосос', 'salmon', 'тунец', 'тунц', 'tuna', 'треск', 'cod'],
+  seafood: ['морепрод', 'креветк', 'shrimp', 'seafood', 'краб', 'shellfish'],
+  nuts: ['орех', 'nut', 'арахис', 'peanut', 'миндал', 'almond'],
+  dairy: ['молок', 'молоч', 'dairy', 'milk', 'лактоз', 'lactose', 'сыр', 'cheese', 'творог', 'сметан'],
+  gluten: ['глютен', 'gluten', 'пшениц', 'wheat', 'мук', 'flour'],
+  egg: ['яйц', 'яиц', 'egg'],
+  meat: ['мяс', 'meat'],
+  pork: ['свинин', 'pork'],
+  mushrooms: ['гриб', 'mushroom'],
+  honey: ['мёд', 'мед', 'honey'],
+  sugar: ['сахар', 'sugar', 'сладк'],
+};
+const STOP = new Set(['без', 'нет', 'или', 'ем', 'люблю', 'не', 'and', 'not', 'free', 'without', 'don’t', "don't", 'eat', 'dislike', 'like', 'аллергия', 'allergy']);
+
+function words(text) {
+  return String(text || '').toLowerCase().replace(/ё/g, 'е')
+    .split(/[\s,;.\/()+]+/).filter(w => w.length >= 3 && !STOP.has(w));
+}
+const yo = s => s.toLowerCase().replace(/ё/g, 'е');
+
+export function restrictions() {
+  const p = data.profile || {};
+  const ws = words([p.allergies, p.dislikes, p.diet].join(' '));
+  const tags = new Set();
+  for (const w of ws) {
+    for (const [tag, list] of Object.entries(TAG_WORDS)) {
+      if (list.some(tw => w.startsWith(yo(tw)) || yo(tw).startsWith(w.slice(0, 4)))) tags.add(tag);
+    }
+    if (/^вегетар|^vegetar/.test(w)) ['meat', 'pork', 'fish', 'seafood'].forEach(x => tags.add(x));
+    if (/^веган|^vegan/.test(w)) ['meat', 'pork', 'fish', 'seafood', 'dairy', 'egg', 'honey'].forEach(x => tags.add(x));
+  }
+  // вегетарианцы и веганы — не исключаем по самому слову
+  const plain = ws.filter(w => !/^(вегетар|vegetar|веган|vegan)/.test(w));
+  return { tags, words: plain };
+}
+
+// Какие продукты рецепта не подходят (список названий)
+export function conflicts(r, rs = restrictions()) {
+  if (!rs.tags.size && !rs.words.length) return [];
+  const out = new Set();
+  for (const i of r.ings) {
+    const name = i.custom ? i.name : nm(ING[i.k]?.name);
+    const names = i.custom ? yo(i.name) : yo(`${ING[i.k]?.name.ru} ${ING[i.k]?.name.en}`);
+    let tags = i.custom ? [] : (ING[i.k]?.tags || []);
+    if (i.custom) {
+      for (const [tag, list] of Object.entries(TAG_WORDS)) if (list.some(tw => names.includes(yo(tw)))) tags = [...tags, tag];
+    }
+    const byTag = tags.some(tg => rs.tags.has(tg));
+    const byWord = rs.words.some(w => names.includes(w.slice(0, Math.max(3, w.length - 2))));
+    if (byTag || byWord) out.add(name);
+  }
+  return [...out];
+}
+
+// ---------- Подбор меню ----------
+function shuffle(a) {
+  const b = [...a];
+  for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+  return b;
+}
+
+function pick(pool, meal, target, used, dayUsed, exclude) {
+  let cands = pool.filter(r => r.meals.includes(meal) && !dayUsed.has(r.id) && r.id !== exclude);
+  if (!cands.length) return null;
+  const minUse = Math.min(...cands.map(r => used.get(r.id) || 0));
+  cands = cands.filter(r => (used.get(r.id) || 0) === minUse);
+  // Русской домашней кухни — побольше (примерно 2 из 3)
+  const home = cands.filter(r => r.cuisine !== 'world');
+  const world = cands.filter(r => r.cuisine === 'world');
+  const group = Math.random() < 0.65 ? (home.length ? home : world) : (world.length ? world : home);
+  const sample = shuffle(group).slice(0, 4);
+  sample.sort((a, b) => Math.abs(a.kcal - target) - Math.abs(b.kcal - target));
+  return sample[0];
+}
+
+const suitable = () => { const rs = restrictions(); return allRecipes().filter(r => !conflicts(r, rs).length); };
+
+export function generatePlan({ servings, meals }) {
+  const pool = suitable();
+  const goal = kcalGoal();
+  const used = new Map();
+  const start = todayKey();
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const items = {};
+    const dayUsed = new Set();
+    for (const m of meals) {
+      const r = pick(pool, m, goal * MEAL_SHARE[m], used, dayUsed);
+      items[m] = r ? r.id : null;
+      if (r) { used.set(r.id, (used.get(r.id) || 0) + 1); dayUsed.add(r.id); }
+    }
+    days.push({ date: addDays(start, i), items, eaten: {} });
+  }
+  return { id: uid(), start, servings, meals, days, createdAt: new Date().toISOString() };
+}
+
+// Случайная замена одного блюда
+export function replacement(plan, dayIdx, meal) {
+  const used = new Map();
+  plan.days.forEach(d => Object.values(d.items).forEach(id => id && used.set(id, (used.get(id) || 0) + 1)));
+  const day = plan.days[dayIdx];
+  const dayUsed = new Set(Object.entries(day.items).filter(([m, id]) => m !== meal && id).map(([, id]) => id));
+  const r = pick(suitable(), meal, kcalGoal() * MEAL_SHARE[meal], used, dayUsed, day.items[meal]);
+  return r ? r.id : day.items[meal];
+}
+
+export const suitableFor = meal => {
+  const rs = restrictions();
+  const ai = planRecipes().filter(r => !conflicts(r, rs).length);
+  return [...ai, ...suitable()].filter(r => r.meals.includes(meal));
+};
+
+// ---------- Список покупок ----------
+export function shoppingList(plan) {
+  const map = new Map();
+  for (const day of plan.days) {
+    for (const m of plan.meals) {
+      const r = day.items[m] && recipeById(day.items[m]);
+      if (!r) continue;
+      for (const i of r.ings) {
+        let key, entry;
+        if (i.custom) {
+          key = `c:${yo(i.name).trim()}:${i.q ? i.u : 'taste'}`;
+          entry = map.get(key) || { key, name: i.name, sec: i.sec || 'other', u: i.q ? i.u : 'taste', q: 0 };
+        } else {
+          const d = ING[i.k];
+          if (!d) continue;
+          key = i.k;
+          entry = map.get(key) || { key, name: nm(d.name), sec: d.sec, u: d.u, q: 0 };
+        }
+        entry.q += (i.q || 0) * plan.servings;
+        map.set(key, entry);
+      }
+    }
+  }
+  const groups = [];
+  for (const sec of SECTIONS) {
+    const items = [...map.values()].filter(x => x.sec === sec)
+      .map(x => ({ ...x, qty: fmtAmount(x.q, x.u, true) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (items.length) groups.push({ sec, items });
+  }
+  return groups;
+}
+
+// ---------- Свой рецепт: разбор строки «Курица 500 г» ----------
+const UNITS = [
+  [/^(кг|kg)$/, 'g', 1000], [/^(г|гр|g|gr|grams?)$/, 'g', 1], [/^(л|l)$/, 'ml', 1000], [/^(мл|ml)$/, 'ml', 1],
+  [/^(шт|pcs|pc)$/, 'pcs', 1], [/^(ст\.?л|tbsp|ст\.ложк\S*)$/, 'tbsp', 1], [/^(ч\.?л|tsp)$/, 'tsp', 1],
+  [/^oz$/, 'g', 28.35], [/^lbs?$/, 'g', 453.6], [/^cups?$/, 'ml', 240], [/^стакан\S*$/, 'ml', 250],
+  [/^(зубч\S*|cloves?)$/, 'clove', 1],
+];
+function unitOf(s) {
+  const u = String(s || '').toLowerCase().replace(/\.$/, '');
+  for (const [re, base, k] of UNITS) if (re.test(u)) return { u: base, k };
+  return null;
+}
+export function parseIngLine(raw) {
+  const line = raw.trim().replace(/ст\.\s*л\.?/gi, 'ст.л').replace(/ч\.\s*л\.?/gi, 'ч.л');
+  if (!line) return null;
+  // «Курица 500 г»
+  let m = line.match(/^(.+?)[\s:—–-]+(\d+(?:[.,]\d+)?)\s*([a-zа-яё.]+)?$/i);
+  if (m) {
+    const q = parseFloat(m[2].replace(',', '.'));
+    if (!m[3]) return { name: m[1].trim(), q, u: 'pcs' };
+    const un = unitOf(m[3]);
+    if (un) return { name: m[1].trim(), q: q * un.k, u: un.u };
+  }
+  // «2 яйца», «500 г курицы»
+  m = line.match(/^(\d+(?:[.,]\d+)?)\s*(\S+)\s*(.*)$/);
+  if (m) {
+    const q = parseFloat(m[1].replace(',', '.'));
+    const un = unitOf(m[2]);
+    if (un && m[3]) return { name: m[3].trim(), q: q * un.k, u: un.u };
+    return { name: `${m[2]} ${m[3]}`.trim(), q, u: 'pcs' };
+  }
+  return { name: line, q: 0, u: 'taste' };
+}
