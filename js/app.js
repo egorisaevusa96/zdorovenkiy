@@ -415,7 +415,7 @@ function prepCard(plan) {
       if (!s.r) return '';
       if (s.freezer) anyFrozen = true;
       const dates = g.days.map(i => fmtDate(plan.days[i].date, { weekday: 'short' })).join(', ');
-      return `<li><span class="mtag">${MEAL_EMOJI[m]}</span><a class="grow pl" href="#/recipe/${s.r.id}"><b>${s.r.emoji} ${esc(nm(s.r.name))}</b>
+      return `<li><span class="mtag">${MEAL_EMOJI[m]}</span><a class="grow pl" href="#/recipe/${s.r.id}" data-act="prep-recipe" data-id="${s.r.id}" data-n="${s.fridge + s.freezer}"><b>${s.r.emoji} ${esc(nm(s.r.name))}</b>
         <small>${t('meal_' + m)} · ${t('prep_portions', { n: s.fridge + s.freezer, d: esc(dates) })}</small>
         <small>${t('prep_fridge', { n: s.fridge })}${s.freezer ? ' · ' + t('prep_freezer', { n: s.freezer }) : ''}</small></a></li>`;
     }).join('');
@@ -1446,8 +1446,14 @@ const ACTIONS = {
   'rs': el => {
     const id = el.dataset.id;
     ui.rs = ui.rs || {};
-    ui.rs[id] = Math.min(20, Math.max(1, recipeServings(id) + Number(el.dataset.n)));
+    ui.rs[id] = Math.min(60, Math.max(1, recipeServings(id) + Number(el.dataset.n)));
     render();
+  },
+  // Из «Плана готовки»: рецепт сразу на все порции заготовки
+  'prep-recipe': el => {
+    ui.rs = ui.rs || {};
+    ui.rs[el.dataset.id] = Math.min(60, Math.max(1, Number(el.dataset.n) || 1));
+    location.hash = '#/recipe/' + el.dataset.id;
   },
   'recipe-eat': el => {
     const r = PL.recipeById(el.dataset.id);
