@@ -252,8 +252,44 @@ Always reply in ${LANG_NAME[lang]}. Address the user by name.`,
 // ---------- Маршруты ----------
 const ROUTES = { '/ping': async () => ({ ok: true }), '/photo': photo, '/menu': menu, '/coach': coach };
 
+// Ошибка → короткий код для сайта
+function errorBody(e) {
+  if (e instanceof UserError) return { error: e.code };
+  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return { error: 'bad_key' };
+  if (e instanceof Anthropic.RateLimitError) return { error: 'busy' };
+  if (e instanceof Anthropic.BadRequestError) return { error: 'bad_request', detail: e.message };
+  if (e instanceof Anthropic.APIError) return { error: 'busy', detail: e.message };
+  return { error: 'server' };
+}
+
+// Ответ «по кусочкам»: пока Claude думает (меню — до нескольких минут), каждые 10 секунд
+// отправляем пробел, чтобы соединение не оборвалось. Пробелы перед JSON не мешают его прочитать.
+// Код ответа здесь всегда 200, а ошибка приходит внутри: {"error": "..."}.
+function streamed(ctx, work) {
+  const { readable, writable } = new TransformStream();
+  const w = writable.getWriter();
+  const enc = new TextEncoder();
+  const beat = setInterval(() => { w.write(enc.encode(' ')).catch(() => {}); }, 10_000);
+  const done = (async () => {
+    let out;
+    try {
+      out = await work();
+    } catch (e) {
+      out = errorBody(e);
+      if (out.error === 'server' || out.detail) console.error(e);
+    }
+    clearInterval(beat);
+    try {
+      await w.write(enc.encode(JSON.stringify(out)));
+      await w.close();
+    } catch { /* телефон уже закрыл соединение */ }
+  })();
+  ctx.waitUntil(done);
+  return new Response(readable, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS } });
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     if (request.method === 'GET' && path === '/') return json({ app: 'zdorovenkiy-ai', ok: true });
@@ -261,20 +297,14 @@ export default {
     if (!handler || request.method !== 'POST') return json({ error: 'not_found' }, 404);
     if (!env.FAMILY_CODE) return json({ error: 'no_code_set' }, 500);
     if (!sameCode(request.headers.get('X-Family-Code'), env.FAMILY_CODE)) return json({ error: 'bad_code' }, 401);
+    let body;
     try {
       const raw = await request.text();
-      if (raw.length > MAX_BODY) throw new UserError('too_big', 413);
-      let body;
-      try { body = JSON.parse(raw || '{}'); } catch { throw new UserError('bad_request'); }
-      return json(await handler(env, body));
-    } catch (e) {
-      if (e instanceof UserError) return json({ error: e.code }, e.status);
-      if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return json({ error: 'bad_key' }, 500);
-      if (e instanceof Anthropic.RateLimitError) return json({ error: 'busy' }, 429);
-      if (e instanceof Anthropic.BadRequestError) return json({ error: 'bad_request', detail: e.message }, 400);
-      if (e instanceof Anthropic.APIError) return json({ error: 'busy', detail: e.message }, 503);
-      console.error(e);
-      return json({ error: 'server' }, 500);
+      if (raw.length > MAX_BODY) return json({ error: 'too_big' }, 413);
+      body = JSON.parse(raw || '{}');
+    } catch {
+      return json({ error: 'bad_request' }, 400);
     }
+    return streamed(ctx, () => handler(env, body));
   },
 };
