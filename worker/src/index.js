@@ -142,7 +142,7 @@ const MENU_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'emoji', 'name', 'meals', 'time', 'kcal', 'ings', 'steps'],
+        required: ['id', 'emoji', 'name', 'meals', 'time', 'kcal', 'fridge', 'freeze', 'ings', 'steps'],
         properties: {
           id: { type: 'string' },
           emoji: { type: 'string' },
@@ -150,6 +150,8 @@ const MENU_SCHEMA = {
           meals: { type: 'array', items: { type: 'string', enum: MEALS } },
           time: { type: 'integer' },
           kcal: { type: 'integer' },
+          fridge: { type: 'integer' },
+          freeze: { type: 'boolean' },
           ings: {
             type: 'array',
             items: {
@@ -188,6 +190,14 @@ async function menu(env, body) {
   if (!meals.length) throw new UserError('bad_request');
   const kcal = int(body.kcalGoal, 1200, 6000, 2000);
   const servings = int(body.servings, 1, 12, 2);
+  // Готовка впрок: 3 — дважды (дни 1 и 4), 7 — один раз (два блюда через день)
+  const prepMode = [3, 7].includes(Number(body.prep?.mode)) ? Number(body.prep.mode) : 0;
+  const prepMeals = prepMode ? meals.filter(m => (body.prep.meals || []).includes(m)) : [];
+  const prepRule = !prepMeals.length ? '' : prepMode === 3
+    ? `
+- MEAL PREP for ${prepMeals.join(', ')}: the family cooks twice. For each of these meals use ONE recipe for days 1–3 (cooked on day 1) and ONE other recipe for days 4–7 (cooked on day 4). These dishes must keep well: fridge >= 4 days or freeze = true (stews, soups, cutlets, casseroles, plov…). No salads that wilt, no fried eggs, no smoothies. Different meals use different recipes. Other meals are cooked fresh as usual.`
+    : `
+- MEAL PREP for ${prepMeals.join(', ')}: the family cooks ONCE on day 1. For each of these meals use TWO recipes that alternate: recipe A on days 1, 3, 5, 7 and recipe B on days 2, 4, 6. Both must freeze well (freeze = true): soups, stews, cutlets, meatballs, casseroles, plov… Different meals use different recipes. Other meals are cooked fresh as usual.`;
   const person = {
     sex: p.sex === 'f' ? 'female' : 'male',
     age: int(p.age, 10, 110, 35),
@@ -201,12 +211,13 @@ Rules:
 - About two thirds of the dishes are Russian / Eastern European home cooking (borscht, buckwheat, syrniki, cutlets, etc.), the rest from other cuisines. Everyday, simple, tasty food.
 - Ingredients must be easy to buy in a regular US supermarket.
 - NEVER use ingredients from the allergies, "avoid" list or that break the diet — this is critical for health.
-- 8 to 14 different recipes for the week. Cooking once for two days is fine (e.g. a soup for two lunches) — reuse the recipe id.
+- 8 to 14 different recipes for the week (fewer is fine when cooking ahead). Cooking once for two days is fine (e.g. a soup for two lunches) — reuse the recipe id.
 - Calories per ONE serving. The sum of the chosen meals per day should be close to the daily goal (within ±10%).
 - Ingredient quantities are for ONE serving. Units: g, ml, pcs, tbsp, tsp, clove, or taste (q=0) for salt/pepper/spices. "sec" is the supermarket section (spice for salt, pepper, dried herbs, oil and vinegar go to "other").
 - "time" is cooking time in minutes. "steps": 3–7 short clear steps.
 - Recipe ids: "r1", "r2", ... "days" has exactly 7 items (day 1 = today). For each requested meal put a recipe id; for meals that are not requested put "".
 - A recipe's "meals" lists which meals it fits.
+- "fridge": how many days the cooked dish keeps in the fridge (0–5). "freeze": true if it can be frozen and reheated without getting worse.${prepRule}
 - "note": one or two short friendly sentences about the week's menu.
 - All names, steps and the note in ${LANG_NAME[lang]}.`;
   const user = `Daily calorie goal: ${kcal} kcal per person.
@@ -219,7 +230,8 @@ Wishes: ${str(body.wishes, 400) || 'none'}.`;
   const ids = new Set(out.recipes.map(r => r.id));
   const days = (out.days || []).slice(0, 7).map(d => Object.fromEntries(meals.map(m => [m, ids.has(d[m]) ? d[m] : ''])));
   if (days.length < 7 || !out.recipes.length) throw new UserError('bad_answer', 502);
-  return { recipes: out.recipes, days, note: str(out.note, 500) };
+  const recipes = out.recipes.map(r => ({ ...r, fridge: int(r.fridge, 0, 5, 2), freeze: !!r.freeze }));
+  return { recipes, days, note: str(out.note, 500) };
 }
 
 // ---------- /coach ----------

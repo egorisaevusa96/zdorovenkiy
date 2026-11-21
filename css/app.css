@@ -590,3 +590,14 @@ body.home .top h1 { font-size: 24px; }
 .c-habits .hchips { gap: 8px; }
 .c-habits .hchip { background: var(--card); border: 0; border-radius: 99px; padding: 6px 12px 6px 6px; box-shadow: 0 2px 0 rgba(0, 0, 0, .06); text-align: left; font-size: 15px; }
 .c-habits .hchip:first-child { padding-left: 6px; }
+
+/* ----- Готовка впрок ----- */
+form:has(input[name="prep"][value="0"]:checked) .prep-meals { display: none; }
+.prep-meals { margin-top: 4px; }
+.ptag { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); width: fit-content; }
+.ptag.cook { background: var(--primary); color: #fff; }
+.ptag.frozen { background: color-mix(in srgb, #3b82f6 16%, transparent); color: #3b82f6; }
+.prep-day + .prep-day { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line, rgba(0,0,0,.12)); }
+.prep-day.now .lbl { color: var(--primary); }
+.prep-day .pl small + small { margin-top: 2px; }

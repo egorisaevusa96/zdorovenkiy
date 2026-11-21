@@ -364,10 +364,65 @@ function planRow(di, m) {
   const eaten = !!day.eaten?.[m];
   const canEat = r && day.date <= todayKey();
   return `<li class="${eaten ? 'done' : ''}"><span class="mtag" title="${t('meal_' + m)}">${MEAL_EMOJI[m]}</span>
-    ${r ? `<a class="grow pl" href="#/recipe/${r.id}"><b>${r.emoji} ${esc(nm(r.name))}</b><small>${t('meal_' + m)} · ${r.kcal} ${t('kcal')} · ⏱ ${r.time} ${t('u_min')}</small></a>`
+    ${r ? `<a class="grow pl" href="#/recipe/${r.id}"><b>${r.emoji} ${esc(nm(r.name))}</b><small>${t('meal_' + m)} · ${r.kcal} ${t('kcal')} · ⏱ ${r.time} ${t('u_min')}</small>${prepTag(di, m)}</a>`
     : `<span class="grow muted">${t('meal_' + m)}: ${t('menu_empty_slot')}</span>`}
     <button class="x" data-act="plan-swap" data-d="${di}" data-m="${m}" aria-label="${t('swap')}">↻</button>
     ${canEat ? `<button class="eat ${eaten ? 'on' : ''}" data-act="plan-eat" data-d="${di}" data-m="${m}">${eaten ? '✓' : t('ate')}</button>` : ''}</li>`;
+}
+// Готовка впрок: метка «готовим / из заготовки / из морозилки»
+function prepTag(di, m) {
+  const g = PL.groupOf(data.plan, di, m);
+  if (!g || !data.plan.days[di].items[m]) return '';
+  if (di === g.cook) return `<span class="ptag cook">${t('tag_cook')}</span>`;
+  const st = PL.storeInfo(PL.recipeById(data.plan.days[di].items[m])) || { fridge: 3 };
+  return di - g.cook < st.fridge ? `<span class="ptag">${t('tag_prep')}</span>` : `<span class="ptag frozen">${t('tag_frozen')}</span>`;
+}
+// Поля формы: готовить ли впрок и что именно
+function prepFields(pp) {
+  const pr = pp.prep || { mode: 0, meals: ['lunch', 'dinner'] };
+  return `<div class="lbl">${t('prep_q')}</div>
+    <div class="chips prep-mode">${[0, 3, 7].map(v => `<label class="chip"><input type="radio" name="prep" value="${v}" ${(Number(pr.mode) || 0) === v ? 'checked' : ''}><span>${t('prep_' + v)}</span></label>`).join('')}</div>
+    <div class="prep-meals"><div class="lbl">${t('prep_meals_q')}</div>
+      <div class="chips">${PL.MEALS.map(m => `<label class="chip"><input type="checkbox" name="prepMeals" value="${m}" ${pr.meals.includes(m) ? 'checked' : ''}><span>${MEAL_EMOJI[m]} ${t('meal_' + m)}</span></label>`).join('')}</div>
+      <div class="muted">${t('prep_hint')}</div></div>`;
+}
+// Прочитать из формы. null — если впрок выбран, но не отмечено ни одного приёма пищи
+function readPrep(fd, meals) {
+  const mode = [3, 7].includes(Number(fd.get('prep'))) ? Number(fd.get('prep')) : 0;
+  const picked = PL.MEALS.filter(m => fd.getAll('prepMeals').includes(m));
+  if (mode && !picked.some(m => meals.includes(m))) { toast(t('prep_pick')); return null; }
+  return { mode, meals: picked };
+}
+// Карточка «План готовки»: в какой день что готовить, сколько порций, что в морозилку
+function prepCard(plan) {
+  const pr = plan.prep;
+  if (!pr && !plan.prepFresh) return '';
+  const tk = todayKey(), short = { weekday: 'long', day: 'numeric', month: 'short' };
+  const cooks = {};
+  for (const m of pr?.meals || []) {
+    for (const g of pr.groups[m]) {
+      if (!plan.days[g.days[0]].items[m]) continue;
+      if (plan.days[Math.max(...g.days)].date < tk) continue;
+      (cooks[g.cook] = cooks[g.cook] || []).push({ m, g });
+    }
+  }
+  let anyFrozen = false;
+  const sessions = Object.keys(cooks).map(Number).sort((a, b) => a - b).map(c => {
+    const day = plan.days[c];
+    const when = day.date === tk ? t('today').toLowerCase() : fmtDate(day.date, short);
+    const rows = cooks[c].map(({ m, g }) => {
+      const s = PL.groupStorage(plan, m, g);
+      if (!s.r) return '';
+      if (s.freezer) anyFrozen = true;
+      const dates = g.days.map(i => fmtDate(plan.days[i].date, { weekday: 'short' })).join(', ');
+      return `<li><span class="mtag">${MEAL_EMOJI[m]}</span><a class="grow pl" href="#/recipe/${s.r.id}"><b>${s.r.emoji} ${esc(nm(s.r.name))}</b>
+        <small>${t('meal_' + m)} · ${t('prep_portions', { n: s.fridge + s.freezer, d: esc(dates) })}</small>
+        <small>${t('prep_fridge', { n: s.fridge })}${s.freezer ? ' · ' + t('prep_freezer', { n: s.freezer }) : ''}</small></a></li>`;
+    }).join('');
+    return `<div class="prep-day ${day.date === tk ? 'now' : ''}"><div class="lbl">👩‍🍳 ${t('prep_cook_day', { d: esc(when) })}</div><ul class="list plan">${rows}</ul></div>`;
+  }).join('');
+  const fresh = (plan.prepFresh || []).map(m => `<div class="muted">💡 ${t('prep_fresh_note', { m: t('meal_' + m) })}</div>`).join('');
+  return card(ic('stopwatch') + t('prep_title'), `${sessions}${anyFrozen ? `<div class="muted">🧊 ${t('prep_thaw')}</div>` : ''}${fresh}`, 'c-prep');
 }
 function menuTodayCard() {
   const di = planDayIdx(ui.date);
@@ -390,6 +445,7 @@ function menuForm() {
       <label class="fld"><span>${t('servings_q')}</span><input name="servings" type="number" inputmode="numeric" min="1" max="12" value="${pp.servings}" required></label>
       <div class="lbl">${t('meals_q')}</div>
       <div class="chips">${PL.MEALS.map(m => `<label class="chip"><input type="checkbox" name="meals" value="${m}" ${pp.meals.includes(m) ? 'checked' : ''}><span>${MEAL_EMOJI[m]} ${t('meal_' + m)}</span></label>`).join('')}</div>
+      ${prepFields(pp)}
       <button class="btn primary full big-btn">✨ ${t('menu_make')}</button>
     </form>
     <div class="lbl">${t('or')}</div>
@@ -410,13 +466,14 @@ function aiMenuSheet(state, err) {
     <label class="fld"><span>${t('servings_q')}</span><input name="servings" type="number" inputmode="numeric" min="1" max="12" value="${pp.servings}" required></label>
     <div class="lbl">${t('meals_q')}</div>
     <div class="chips">${PL.MEALS.map(m => `<label class="chip"><input type="checkbox" name="meals" value="${m}" ${pp.meals.includes(m) ? 'checked' : ''}><span>${MEAL_EMOJI[m]} ${t('meal_' + m)}</span></label>`).join('')}</div>
+    ${prepFields(pp)}
     <label class="fld"><span>${t('menu_wishes')}</span><textarea name="wishes" rows="3" maxlength="400" placeholder="${t('menu_wishes_ph')}">${esc(ui.aiWishes || '')}</textarea></label>
     ${planActive() ? `<div class="muted">⚠️ ${t('menu_ai_replace')}</div>` : ''}
     <button class="btn primary full big-btn">🤖 ${t('menu_ai_go')}</button>
     <button type="button" class="btn ghost full" data-act="sheet-close">${t('cancel')}</button>
   </form>`;
 }
-async function runAiMenu(servings, meals, wishes) {
+async function runAiMenu(servings, meals, wishes, prep) {
   if (ui.aiMenuBusy) return;
   ui.aiMenuBusy = true;
   openSheet(aiMenuSheet('wait'));
@@ -425,8 +482,9 @@ async function runAiMenu(servings, meals, wishes) {
     const res = await AI.aiMenu({
       profile: { sex: p.sex, age: p.age, goal: p.goal, allergies: p.allergies, dislikes: p.dislikes, diet: p.diet },
       kcalGoal: H.kcalGoal(), servings, meals, wishes,
+      prep: prep && prep.mode ? { mode: prep.mode, meals: prep.meals.filter(m => meals.includes(m)) } : null,
     });
-    data.plan = PL.planFromAi(res, { servings, meals });
+    data.plan = PL.planFromAi(res, { servings, meals, prep });
     data.plansMade = (data.plansMade || 0) + 1;
     data.shop = { planId: data.plan.id, checked: {} };
     ui.aiWishes = '';
@@ -446,11 +504,12 @@ function vMenu() {
   const plan = data.plan, goal = H.kcalGoal(), tk = todayKey();
   const short = { day: 'numeric', month: 'short' };
   html += card(ic('clipboard') + t('menu_title'), `
-    <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}</div>
+    <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}${plan.prep ? ' · ' + t('prep_' + plan.prep.mode) : ''}</div>
     ${plan.ai && plan.note ? `<div class="ai-note">🤖 ${esc(plan.note)}</div>` : ''}
     <a class="btn primary full" href="#/shop">🛒 ${t('shop_open')}</a>
     <div class="row"><button class="btn ghost grow" data-act="menu-new">↻ ${t('menu_new')}</button>
       <button class="btn ghost" data-act="ai-menu">🤖 ${t('ai')}</button></div>`);
+  html += prepCard(plan);
   plan.days.forEach((day, i) => {
     if (day.date < tk) return;
     const sum = plan.meals.reduce((s, m) => s + (PL.recipeById(day.items[m])?.kcal || 0), 0);
@@ -465,9 +524,10 @@ function vMenu() {
 function swapSheet(di, m) {
   const day = data.plan.days[di];
   const cur = day.items[m];
-  const list = PL.suitableFor(m);
+  const list = PL.prepCandidates(data.plan, di, m);
   return `<div class="sheet-form">
     <h2>${MEAL_EMOJI[m]} ${t('meal_' + m)} · ${esc(fmtDate(day.date, { weekday: 'short', day: 'numeric', month: 'short' }))}</h2>
+    ${PL.groupOf(data.plan, di, m) ? `<div class="muted">🍱 ${t('prep_swap_all')}</div>` : ''}
     <button class="btn primary full" data-act="plan-random" data-d="${di}" data-m="${m}">🎲 ${t('swap_random')}</button>
     <h3>${t('swap_choose')}</h3>
     <div class="presets">${list.map(r => `<button type="button" class="preset ${r.id === cur ? 'on' : ''}" data-act="plan-set" data-d="${di}" data-m="${m}" data-id="${r.id}">
@@ -477,9 +537,15 @@ function swapSheet(di, m) {
   </div>`;
 }
 function setPlanItem(di, m, id) {
-  const day = data.plan.days[di];
-  if (day.eaten?.[m]) unEat(di, m);
-  day.items[m] = id || null;
+  const g = PL.groupOf(data.plan, di, m);
+  const tk = todayKey();
+  // В заготовке одно блюдо на все её дни (прошедшие дни не трогаем)
+  const idx = g ? g.days.filter(i => i === di || data.plan.days[i].date >= tk) : [di];
+  for (const i of idx) {
+    const day = data.plan.days[i];
+    if (day.eaten?.[m]) unEat(i, m);
+    day.items[m] = id || null;
+  }
 }
 function unEat(di, m) {
   const day = data.plan.days[di];
@@ -1482,8 +1548,10 @@ const FORMS = {
     const meals = PL.MEALS.filter(m => fd.getAll('meals').includes(m));
     if (!meals.length) { toast(t('pick_meals')); return; }
     const servings = Math.min(12, Math.max(1, Math.round(num(fd.get('servings')) || 1)));
-    data.planPrefs = { servings, meals };
-    data.plan = PL.generatePlan({ servings, meals });
+    const prep = readPrep(fd, meals);
+    if (!prep) return;
+    data.planPrefs = { servings, meals, prep };
+    data.plan = PL.generatePlan({ servings, meals, prep });
     data.plansMade = (data.plansMade || 0) + 1;
     data.shop = { planId: data.plan.id, checked: {} };
     commit();
@@ -1494,10 +1562,12 @@ const FORMS = {
     const meals = PL.MEALS.filter(m => fd.getAll('meals').includes(m));
     if (!meals.length) { toast(t('pick_meals')); return; }
     const servings = Math.min(12, Math.max(1, Math.round(num(fd.get('servings')) || 1)));
+    const prep = readPrep(fd, meals);
+    if (!prep) return;
     ui.aiWishes = String(fd.get('wishes') || '').trim();
-    data.planPrefs = { servings, meals };
+    data.planPrefs = { servings, meals, prep };
     save();
-    runAiMenu(servings, meals, ui.aiWishes);
+    runAiMenu(servings, meals, ui.aiWishes, prep);
   },
   coach: (f, fd) => {
     const q = String(fd.get('q') || '').trim();

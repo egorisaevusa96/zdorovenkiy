@@ -26,7 +26,7 @@ function fresh() {
     badges: {},        // { badgeId: 'YYYY-MM-DD' }
     recipes: [],       // свои рецепты
     plan: null,        // меню на неделю
-    planPrefs: { servings: 2, meals: ['breakfast', 'lunch', 'dinner'] },
+    planPrefs: { servings: 2, meals: ['breakfast', 'lunch', 'dinner'], prep: { mode: 0, meals: ['lunch', 'dinner'] } },
     plansMade: 0,
     shop: { planId: null, checked: {} },
     coach: { msgs: [], lastReview: null }, // переписка с ИИ-тренером

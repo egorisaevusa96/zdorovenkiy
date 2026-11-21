@@ -24,7 +24,7 @@ export const allRecipes = () => [...RECIPES, ...data.recipes.map(normCustom)];
 function normAi(r) {
   return {
     id: r.id, ai: true, cuisine: 'ai', emoji: r.emoji || '🍲', name: r.name, meals: r.meals || [],
-    time: r.time || 0, kcal: r.kcal || 0, servings: 1,
+    time: r.time || 0, kcal: r.kcal || 0, servings: 1, fridge: r.fridge || 0, freeze: !!r.freeze,
     ings: (r.ings || []).map(i => {
       const taste = i.u === 'taste' || !i.q;
       return { custom: true, name: i.name, q: taste ? 0 : i.q, u: taste ? 'taste' : i.u, sec: SECTIONS.includes(i.sec) ? i.sec : 'other' };
@@ -36,7 +36,7 @@ export const planRecipes = () => (data.plan?.recipes || []).map(normAi);
 export const recipeById = id => allRecipes().find(r => r.id === id) || planRecipes().find(r => r.id === id) || null;
 
 // Ответ ИИ → наше меню на 7 дней
-export function planFromAi(res, { servings, meals }) {
+export function planFromAi(res, { servings, meals, prep }) {
   const id = uid();
   const start = todayKey();
   const map = {};
@@ -47,6 +47,7 @@ export function planFromAi(res, { servings, meals }) {
       id: nid, emoji: String(r.emoji || '🍲').slice(0, 4), name: String(r.name || '').slice(0, 80),
       meals: (r.meals || []).filter(m => MEALS.includes(m)),
       time: Math.max(0, Math.round(r.time) || 0), kcal: Math.max(0, Math.round(r.kcal) || 0),
+      fridge: Math.min(5, Math.max(0, Math.round(r.fridge) || 0)), freeze: !!r.freeze,
       ings: (r.ings || []).slice(0, 30), steps: (r.steps || []).slice(0, 12),
     };
   });
@@ -60,7 +61,19 @@ export function planFromAi(res, { servings, meals }) {
     if (r.meals.length) continue;
     r.meals = meals.filter(m => days.some(d => d.items[m] === r.id));
   }
-  return { id, start, servings, meals, days, createdAt: new Date().toISOString(), ai: true, note: res.note || '', recipes };
+  const plan = { id, start, servings, meals, days, createdAt: new Date().toISOString(), ai: true, note: res.note || '', recipes };
+  const pr = prepSetup(prep, meals);
+  if (pr) {
+    plan.prep = pr;
+    // ИИ мог чуть отступить от схемы — ставим блюдо первого дня группы на все её дни
+    for (const m of pr.meals) {
+      for (const g of pr.groups[m]) {
+        const id0 = g.days.map(i => days[i].items[m]).find(Boolean) || null;
+        g.days.forEach(i => { days[i].items[m] = id0; });
+      }
+    }
+  }
+  return plan;
 }
 
 // ---------- Аллергии и «не ем» из профиля ----------
@@ -119,6 +132,51 @@ export function conflicts(r, rs = restrictions()) {
   return [...out];
 }
 
+// ---------- Готовка впрок ----------
+// Сколько дней блюдо живёт в холодильнике и можно ли его заморозить. Нет в списке — впрок не готовим.
+const STORE = {
+  oatmeal: [3, false], syrniki: [3, true], millet: [3, false], casserole: [3, true], overnight_oats: [3, false],
+  borscht: [4, true], shchi: [4, true], noodle_soup: [3, false], buckwheat_soup: [3, true], rassolnik: [4, true],
+  ukha: [2, false], lentil_soup: [4, true], buckwheat_chicken: [4, true], meatballs: [4, true], cutlets: [4, true],
+  lazy_golubtsy: [4, true], baked_cod: [2, false], plov: [4, true], beef_stew: [4, true], stuffed_zucchini: [3, true],
+  stewed_cabbage: [4, true], navy_pasta: [3, false], vinegret: [3, false], baked_apple: [2, false], hummus: [4, false],
+  tabbouleh: [3, false], burrito_bowl: [4, true], bolognese: [4, true], stir_fry: [3, false], salmon_quinoa: [3, false],
+  curry: [4, true], chickpea_stew: [4, true], sweet_potato: [4, true],
+};
+export function storeInfo(r) {
+  if (!r) return null;
+  if (r.ai) return r.fridge ? { fridge: r.fridge, freeze: r.freeze } : { fridge: 3, freeze: false };
+  if (r.custom) return { fridge: 3, freeze: false };
+  const v = STORE[r.id];
+  return v ? { fridge: v[0], freeze: v[1] } : null;
+}
+// Группы дней: на 3–4 дня — готовим в 1-й и 4-й день; на неделю — в 1-й день два блюда через день
+export function prepSetup(prep, meals) {
+  const mode = Number(prep?.mode) || 0;
+  const pm = (prep?.meals || []).filter(m => meals.includes(m));
+  if (!mode || !pm.length) return null;
+  const blocks = mode === 7
+    ? [{ cook: 0, days: [0, 2, 4, 6] }, { cook: 0, days: [1, 3, 5] }]
+    : [{ cook: 0, days: [0, 1, 2] }, { cook: 3, days: [3, 4, 5, 6] }];
+  return { mode, meals: pm, groups: Object.fromEntries(pm.map(m => [m, blocks.map(b => ({ ...b, days: [...b.days] }))])) };
+}
+export const groupOf = (plan, di, m) => plan?.prep?.groups?.[m]?.find(g => g.days.includes(di)) || null;
+// Хватит ли срока хранения на всю группу (с морозилкой или без)
+function keeps(r, g) {
+  const st = storeInfo(r);
+  if (!st) return false;
+  const span = Math.max(...g.days) - g.cook;
+  return st.freeze || span < st.fridge;
+}
+// Порции группы: сколько в холодильник, сколько в морозилку
+export function groupStorage(plan, m, g) {
+  const r = recipeById(plan.days[g.days[0]].items[m]);
+  const st = storeInfo(r) || { fridge: 3, freeze: false };
+  let fridge = 0, freezer = 0;
+  for (const i of g.days) (i - g.cook < st.fridge ? fridge++ : freezer++);
+  return { r, fridge: fridge * plan.servings, freezer: freezer * plan.servings, days: st.fridge };
+}
+
 // ---------- Подбор меню ----------
 function shuffle(a) {
   const b = [...a];
@@ -142,23 +200,51 @@ function pick(pool, meal, target, used, dayUsed, exclude) {
 
 const suitable = () => { const rs = restrictions(); return allRecipes().filter(r => !conflicts(r, rs).length); };
 
-export function generatePlan({ servings, meals }) {
+export function generatePlan({ servings, meals, prep }) {
   const pool = suitable();
   const goal = kcalGoal();
   const used = new Map();
   const start = todayKey();
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const items = {};
-    const dayUsed = new Set();
+  const days = Array.from({ length: 7 }, (_, i) => ({ date: addDays(start, i), items: {}, eaten: {} }));
+  const pr = prepSetup(prep, meals);
+  const fresh = [];
+  // Сначала — блюда впрок: одно блюдо на всю группу дней
+  if (pr) {
+    const taken = new Set();
+    for (const m of pr.meals) {
+      for (const g of pr.groups[m]) {
+        const ok = pool.filter(r => !taken.has(r.id) && keeps(r, g));
+        const r = pick(ok, m, goal * MEAL_SHARE[m], used, new Set());
+        if (!r) continue;
+        taken.add(r.id);
+        used.set(r.id, (used.get(r.id) || 0) + g.days.length);
+        g.days.forEach(i => { days[i].items[m] = r.id; });
+      }
+      if (!pr.groups[m].some(g => days[g.days[0]].items[m])) fresh.push(m);
+    }
+    // Если для приёма пищи нет подходящих блюд — его готовим каждый день свежим
+    for (const m of fresh) { delete pr.groups[m]; pr.meals = pr.meals.filter(x => x !== m); }
+  }
+  for (const day of days) {
+    const dayUsed = new Set(Object.values(day.items).filter(Boolean));
     for (const m of meals) {
+      if (pr?.groups[m]) { day.items[m] = day.items[m] || null; continue; }
       const r = pick(pool, m, goal * MEAL_SHARE[m], used, dayUsed);
-      items[m] = r ? r.id : null;
+      day.items[m] = r ? r.id : null;
       if (r) { used.set(r.id, (used.get(r.id) || 0) + 1); dayUsed.add(r.id); }
     }
-    days.push({ date: addDays(start, i), items, eaten: {} });
   }
-  return { id: uid(), start, servings, meals, days, createdAt: new Date().toISOString() };
+  const plan = { id: uid(), start, servings, meals, days, createdAt: new Date().toISOString() };
+  if (pr && pr.meals.length) plan.prep = pr;
+  if (fresh.length) plan.prepFresh = fresh;
+  return plan;
+}
+
+// Замена блюда в заготовке — только из тех, что хранятся нужный срок
+export function prepCandidates(plan, di, m) {
+  const g = groupOf(plan, di, m);
+  const list = suitableFor(m);
+  return g ? list.filter(r => keeps(r, g)) : list;
 }
 
 // Случайная замена одного блюда
@@ -167,7 +253,9 @@ export function replacement(plan, dayIdx, meal) {
   plan.days.forEach(d => Object.values(d.items).forEach(id => id && used.set(id, (used.get(id) || 0) + 1)));
   const day = plan.days[dayIdx];
   const dayUsed = new Set(Object.entries(day.items).filter(([m, id]) => m !== meal && id).map(([, id]) => id));
-  const r = pick(suitable(), meal, kcalGoal() * MEAL_SHARE[meal], used, dayUsed, day.items[meal]);
+  const g = groupOf(plan, dayIdx, meal);
+  const pool = g ? suitable().filter(r => keeps(r, g)) : suitable();
+  const r = pick(pool, meal, kcalGoal() * MEAL_SHARE[meal], used, dayUsed, day.items[meal]);
   return r ? r.id : day.items[meal];
 }
 
