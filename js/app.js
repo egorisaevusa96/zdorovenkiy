@@ -132,7 +132,7 @@ function lineChart(points) {
 // ----- Сегодня -----
 function installHint() {
   if (data.settings.installHintHidden || isStandalone()) return '';
-  return card('📲 ' + t('install_title'), `<p>${t('install_hint')}</p>
+  return card(ic('house') + t('install_title'), `<p>${t('install_hint')}</p>
     <div class="row"><a class="btn primary grow" href="#/install">${t('how_install')}</a>
     <button class="btn ghost" data-act="hide-install">${t('hide')}</button></div>`, 'hint');
 }
@@ -140,7 +140,7 @@ function backupHint() {
   const last = new Date(data.lastBackup || data.createdAt);
   const days = (Date.now() - last) / 864e5;
   if (days < 7 || !Object.keys(data.days).length) return '';
-  return card('💾 ' + t('backup_title'), `<p>${t('backup_remind')}</p><a class="btn primary full" href="#/backup">${t('make_backup')}</a>`, 'warn');
+  return card(ic('cloud') + t('backup_title'), `<p>${t('backup_remind')}</p><a class="btn primary full" href="#/backup">${t('make_backup')}</a>`, 'warn');
 }
 // Объёмные значки (картинки в img/ui, нарисованы Codex)
 const ic = (name, cls = '') => `<img class="i3 ${cls}" src="img/ui/${name}.webp" alt="" aria-hidden="true">`;
@@ -166,14 +166,14 @@ function helloCard() {
 function waterCard(d) {
   const g = data.settings.waterGoal, n = d.water;
   const cups = Array.from({ length: Math.max(g, n) }, (_, i) => ic(i < n ? 'glass-full' : 'glass-empty', 'cup3')).join('');
-  return `<section class="card c-water">
-    <h2>${t('water_title')} <span>${t('water_of', { n, g })}</span></h2>
-    <div class="cups">${cups}</div>
-    <div class="row">
-      <button class="wbtn ghost" data-act="water" data-n="-1" ${n <= 0 ? 'disabled' : ''} aria-label="−1">−1</button>
-      <button class="wbtn grow" data-act="water" data-n="1">+1 ${t('glass')}</button>
+  return `<section class="card c-water spark">
+    <div class="card-h"><h2>${t('water_title')} <span>${t('water_of', { n, g })}</span></h2>
+      <button class="minus" data-act="water" data-n="-1" ${n <= 0 ? 'disabled' : ''} aria-label="−1 ${t('glass')}">−</button></div>
+    <div class="water-row">
+      <div class="cups" style="--n:${Math.max(g, n)}">${cups}</div>
+      <button class="wbtn" data-act="water" data-n="1">+1 ${t('glass')}</button>
     </div>
-    <div class="sub">${U.fmtWaterTotal(n)} · ${t('glass_is', { v: U.glassLabel() })}${n >= g ? ` · ${t('water_done')} 🔥 ${P.waterStreak()}` : ''}</div>
+    ${n >= g ? `<div class="sub">${t('water_done')} 🔥 ${P.waterStreak()}</div>` : ''}
   </section>`;
 }
 function kcalCard(d) {
@@ -183,7 +183,7 @@ function kcalCard(d) {
     const sum = d.food.filter(f => f.meal === m).reduce((s, f) => s + (Number(f.kcal) || 0), 0);
     return `<li>${ic(MEAL_IC[m])}<span class="grow">${t('meal_' + m)}</span><b>${sum} ${t('kcal')}</b></li>`;
   }).join('');
-  return `<section class="card c-food">
+  return `<section class="card c-food spark">
     <div class="food-h">${ic('salad', 'salad')}
       <div class="grow"><h2>${t('tab_food')} <span>${eaten} / ${total} ${t('kcal')}</span></h2>
         <div class="pbar ${eaten > total ? 'bad' : ''}"><i style="width:${Math.min(p, 100)}%"></i><span>${p}%</span></div>
@@ -191,7 +191,7 @@ function kcalCard(d) {
     </div>
     <div class="food-b">
       <a class="meals" href="#/food"><ul>${rows}</ul></a>
-      <button class="photo-btn" data-act="photo">${ic('camera')}<span>${t('photo_food')}</span></button>
+      <button class="photo-btn spark" data-act="photo">${ic('camera')}<span>${t('photo_food')}</span></button>
     </div>
     <input type="file" id="photo-file" accept="image/*" hidden>
   </section>`;
@@ -214,13 +214,13 @@ function tilesCard(d) {
 }
 function stepsCard(d) {
   const g = data.settings.stepsGoal;
-  return card('👣 ' + t('steps_title'), `
+  return card(ic('sneaker') + t('steps_title'), `
     <form data-form="steps" class="row">
       <input type="number" inputmode="numeric" name="steps" min="0" max="200000" value="${d.steps || ''}" placeholder="0" aria-label="${t('steps_title')}">
       <button class="btn primary">${t('save')}</button>
     </form>
     ${bar(d.steps / g)}
-    <div class="muted">${t('steps_goal', { n: g.toLocaleString(locale()) })} · ${t('steps_hint')}</div>`);
+    <div class="muted">${t('steps_goal', { n: g.toLocaleString(locale()) })} · ${t('steps_hint')}</div>`, 'hero h-steps');
 }
 function stepsSheet() {
   const d = peekDay(ui.date), g = data.settings.stepsGoal;
@@ -239,11 +239,11 @@ function habitsCard(d) {
     ? hs.map(h => {
       const on = !!d.habits[h.id], st = P.habitStreak(h.id);
       return `<button class="hchip ${on ? 'on' : ''}" data-act="habit" data-id="${h.id}" aria-pressed="${on}">
-        <span class="chk">${on ? '✓' : ''}</span><span class="nm">${esc(h.emoji)} ${esc(nm(h.name))}</span>${st ? `<span class="st">🔥${st}</span>` : ''}</button>`;
+        <span class="chk">${on ? '✓' : ''}</span><span class="nm">${esc(nm(h.name))}</span>${st ? `<span class="st">🔥${st}</span>` : ''}</button>`;
     }).join('')
     : `<div class="muted">${t('no_habits')}</div>`;
   return `<section class="card c-habits">
-    <div class="card-h"><h2>${ic('calendar', 'h-ic')}${t('habits_title')}</h2><a class="link" href="#/habits">${t('edit_habits')} ›</a></div>
+    <a class="h-go spark" href="#/habits" aria-label="${t('edit_habits')}">${ic('calendar', 'h-ic')}</a>
     <div class="hchips">${body}</div>
   </section>`;
 }
@@ -270,7 +270,7 @@ function vFood() {
   let html = foodTabs('food') + card(ic('salad') + t('kcal_title'), `
     <div class="big">${eaten}<small> / ${total} ${t('kcal')}</small></div>
     ${bar(eaten / total, eaten > total ? 'bad' : '')}
-    ${burned ? `<div class="muted">${t('incl_sport', { n: burned })}</div>` : ''}`);
+    ${burned ? `<div class="muted">${t('incl_sport', { n: burned })}</div>` : ''}`, 'hero h-food');
   html += `<div class="row"><button class="btn primary grow" data-act="food-add">+ ${t('add_food')}</button>
     <button class="btn ghost" data-act="photo">📷 ${t('photo')}</button></div>
     <input type="file" id="photo-file" accept="image/*" hidden>`;
@@ -372,7 +372,7 @@ function planRow(di, m) {
 function menuTodayCard() {
   const di = planDayIdx(ui.date);
   if (di < 0) return '';
-  return card('📅 ' + t('menu_today'), `<ul class="list plan">${data.plan.meals.map(m => planRow(di, m)).join('')}</ul>
+  return card(ic('clipboard') + t('menu_today'), `<ul class="list plan">${data.plan.meals.map(m => planRow(di, m)).join('')}</ul>
     <a class="link" href="#/menu">${t('menu_week')} ›</a>`);
 }
 
@@ -385,7 +385,7 @@ function restrictionNote() {
 }
 function menuForm() {
   const pp = data.planPrefs;
-  return card('📅 ' + t('menu_title'), `<p>${t('menu_intro')}</p>${restrictionNote()}
+  return card(ic('clipboard') + t('menu_title'), `<p>${t('menu_intro')}</p>${restrictionNote()}
     <form data-form="plan">
       <label class="fld"><span>${t('servings_q')}</span><input name="servings" type="number" inputmode="numeric" min="1" max="12" value="${pp.servings}" required></label>
       <div class="lbl">${t('meals_q')}</div>
@@ -445,7 +445,7 @@ function vMenu() {
   if (!planActive()) return html + menuForm();
   const plan = data.plan, goal = H.kcalGoal(), tk = todayKey();
   const short = { day: 'numeric', month: 'short' };
-  html += card('📅 ' + t('menu_title'), `
+  html += card(ic('clipboard') + t('menu_title'), `
     <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}</div>
     ${plan.ai && plan.note ? `<div class="ai-note">🤖 ${esc(plan.note)}</div>` : ''}
     <a class="btn primary full" href="#/shop">🛒 ${t('shop_open')}</a>
@@ -494,13 +494,13 @@ function vShop() {
   let html = foodTabs('shop');
   const plan = data.plan;
   if (!planActive()) {
-    return html + card('🛒 ' + t('shop_title'), `<p>${t('shop_empty')}</p><a class="btn primary full" href="#/menu">✨ ${t('menu_make')}</a>`);
+    return html + card(ic('cart') + t('shop_title'), `<p>${t('shop_empty')}</p><a class="btn primary full" href="#/menu">✨ ${t('menu_make')}</a>`);
   }
   if (data.shop.planId !== plan.id) data.shop = { planId: plan.id, checked: {} };
   const groups = PL.shoppingList(plan);
   const all = groups.flatMap(g => g.items).filter(x => x.sec !== 'spice');
   const done = all.filter(x => data.shop.checked[x.key]).length;
-  html += card('🛒 ' + t('shop_title'), `<div class="muted">${t('shop_for', { n: plan.servings })}</div>
+  html += card(ic('cart') + t('shop_title'), `<div class="muted">${t('shop_for', { n: plan.servings })}</div>
     ${bar(all.length ? done / all.length : 0)}
     <div class="muted">${t('shop_progress', { a: done, b: all.length })}</div>
     ${done ? `<button class="btn ghost full" data-act="shop-reset">${t('shop_reset')}</button>` : ''}`);
@@ -560,7 +560,7 @@ function vRecipe(id) {
         <b class="sv">${sv}</b>
         <button class="mini" data-act="rs" data-id="${r.id}" data-n="1" aria-label="+">+</button></div>
       <ul class="list">${r.ings.map(ingRow).join('')}</ul>`)
-    + (r.steps.length ? card('👩‍🍳 ' + t('steps'), `<ol class="steps">${r.steps.map(s => `<li>${esc(nm(s))}</li>`).join('')}</ol>`) : '')
+    + (r.steps.length ? card(ic('book') + t('steps'), `<ol class="steps">${r.steps.map(s => `<li>${esc(nm(s))}</li>`).join('')}</ol>`) : '')
     + `<button class="btn primary full" data-act="recipe-eat" data-id="${r.id}">🍽️ ${t('ate_portion')}</button>`
     + (r.ai ? `<button class="btn ghost full" data-act="recipe-keep" data-id="${r.id}">⭐ ${t('recipe_keep')}</button>` : '')
     + (r.custom ? `<div class="row"><a class="btn ghost grow" href="#/recipe-edit/${r.id}">✏️ ${t('edit')}</a>
@@ -602,8 +602,8 @@ function vSport() {
         <button class="x" data-act="sport-del" data-id="${x.id}" aria-label="${t('delete')}">×</button></li>`;
     }).join('')}</ul><div class="muted">${t('sport_total', { min: H.daySportMin(d), kcal: H.dayBurned(d) })}</div>`
     : `<div class="muted">${t('no_sport')}</div>`;
-  html += card('🏃 ' + t('sport_title'), list + `<button class="btn primary full" data-act="sport-add">+ ${t('add_sport')}</button>`);
-  html += `<h2 class="sec">${t('workouts_title')}</h2>`;
+  html += card(ic('dumbbell') + t('sport_title'), list + `<button class="btn primary full" data-act="sport-add">+ ${t('add_sport')}</button>`, 'hero h-sport');
+  html += `<h2 class="sec">${ic('stopwatch')}${t('workouts_title')}</h2>`;
   html += WORKOUTS.map(w => `<a class="card wcard" href="#/workout/${w.id}">
     <span class="wem">${w.emoji}</span>
     <span class="grow"><b>${esc(nm(w.name))}</b><small>${esc(nm(w.desc))}</small></span>
@@ -795,7 +795,7 @@ function vSleep() {
   const last = lastSleep();
   const sl = d.sleep || { bed: last?.bed || '23:00', wake: last?.wake || '07:00', quality: 0 };
   const di = d.diary || { mood: 0, energy: 0, stress: 0, note: '' };
-  let html = card('🌙 ' + t('sleep_title'), `<form data-form="sleep">
+  let html = card(ic('moon') + t('sleep_title'), `<form data-form="sleep">
     <div class="muted">${t('sleep_hint')}</div>
     <div class="two">
       <label class="fld"><span>${t('bedtime')}</span><input type="time" name="bed" value="${sl.bed}" required></label>
@@ -803,14 +803,14 @@ function vSleep() {
     </div>
     <div class="ok" id="sleep-dur"></div>
     <div class="lbl">${t('sleep_quality')}</div>${scale('quality', sl.quality, MOODS)}
-    <button class="btn primary full">${d.sleep ? '✓ ' : ''}${t('save')}</button></form>`);
-  html += card('📔 ' + t('diary_title'), `<form data-form="diary">
+    <button class="btn primary full">${d.sleep ? '✓ ' : ''}${t('save')}</button></form>`, 'hero h-sleep');
+  html += card(ic('heart') + t('diary_title'), `<form data-form="diary">
     <div class="lbl">${t('mood')}</div>${scale('mood', di.mood, MOODS)}
     <div class="lbl">${t('energy')} ⚡</div>${scale('energy', di.energy, ['1', '2', '3', '4', '5'])}
     <div class="lbl">${t('stress')} 🌪️</div>${scale('stress', di.stress, ['1', '2', '3', '4', '5'])}
     <label class="fld"><span>${t('note')}</span><textarea name="note" rows="3" maxlength="1000" placeholder="${t('note_ph')}">${esc(di.note)}</textarea></label>
     <button class="btn primary full">${d.diary ? '✓ ' : ''}${t('save')}</button></form>`);
-  html += card('📊 ' + t('week_sleep'), sleepChart());
+  html += card(ic('calendar') + t('week_sleep'), sleepChart());
   return html;
 }
 function updateSleepPreview(f) {
@@ -821,12 +821,11 @@ function updateSleepPreview(f) {
 // ----- Ещё -----
 function vMore() {
   const items = [
-    ['#/coach', '🤖', 'coach_title'], ['#/reminders', '🔔', 'rem_title'], ['#/antiyt', '📵', 'yt_title'], ['#/weight', '⚖️', 'weight_title'], ['#/habits', '✅', 'habits_title'], ['#/awards', '🏅', 'awards_title'],
-    ['#/profile', '👤', 'profile_title'], ['#/settings', '⚙️', 'settings_title'], ['#/backup', '💾', 'backup_title'],
-    ['#/install', '📲', 'install_title'],
+    ['#/coach', 'robot', 'coach_title'], ['#/reminders', 'bell', 'rem_title'], ['#/antiyt', 'nophone', 'yt_title'], ['#/weight', 'scale', 'weight_title'], ['#/habits', 'calendar', 'habits_title'], ['#/awards', 'trophy', 'awards_title'],
+    ['#/profile', 'person', 'profile_title'], ['#/settings', 'gear', 'settings_title'], ['#/backup', 'cloud', 'backup_title'],
+    ['#/install', 'house', 'install_title'],
   ];
-  return `<nav class="menu card">${items.map(([h, e, k]) => `<a href="${h}"><span class="em">${e}</span><span class="grow">${t(k)}</span><span class="muted">›</span></a>`).join('')}</nav>`
-    + card('🔜 ' + t('coming_title'), `<ul class="plain">${t('coming_list')}</ul>`);
+  return `<nav class="menu card">${items.map(([h, e, k]) => `<a href="${h}">${ic(e, 'em3')}<span class="grow">${t(k)}</span><span class="muted">›</span></a>`).join('')}</nav>`;
 }
 
 // ----- ИИ-тренер -----
@@ -834,17 +833,17 @@ const fmtMsg = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g,
 const reviewDue = () => !data.coach.lastReview || data.coach.lastReview <= addDays(todayKey(), -7);
 function coachCard() {
   if (!AI.aiReady() || !reviewDue() || !P.totalPoints()) return '';
-  return card('🤖 ' + t('coach_title'), `<p>${t('coach_week_ready')}</p>
+  return card(ic('robot') + t('coach_title'), `<p>${t('coach_week_ready')}</p>
     <button class="btn primary full" data-act="coach-review-go">📊 ${t('coach_review')}</button>`);
 }
 function vCoach() {
   if (!AI.aiReady()) {
-    return card('🤖 ' + t('coach_title'), `<p>${t('coach_intro')}</p><p class="muted">${t('ai_off')}</p>
+    return card(ic('robot') + t('coach_title'), `<p>${t('coach_intro')}</p><p class="muted">${t('ai_off')}</p>
       <a class="btn primary full" href="#/settings">⚙️ ${t('ai_setup_btn')}</a>`);
   }
   const c = data.coach, busy = !!ui.coachBusy;
   const msgs = c.msgs.map(m => `<div class="msg ${m.role}${m.err ? ' err' : ''}">${fmtMsg(m.text)}</div>`).join('');
-  return card('🤖 ' + t('coach_title'), `<p class="muted">${t('coach_intro')}</p>
+  return card(ic('robot') + t('coach_title'), `<p class="muted">${t('coach_intro')}</p>
       <div class="muted">${t('tone')}: ${t('tone_' + data.settings.tone)} · <a href="#/settings">${t('change')}</a></div>
       <button class="btn primary full" data-act="coach-review" ${busy ? 'disabled' : ''}>📊 ${t('coach_review')}</button>`)
     + `<div class="chat" id="chat">${msgs || `<div class="muted center">${t('coach_empty')}</div>`}
@@ -897,7 +896,7 @@ function vWeight() {
     const diff = Math.abs(cur - p.targetKg);
     goalTxt += ` · ${t('target')} ${U.fmtWeight(p.targetKg)} — ${diff < 0.25 ? t('goal_reached') : t('left_to_go', { v: U.fmtWeight(diff) })}`;
   }
-  let html = card('⚖️ ' + t('weight_title'), `
+  let html = card(ic('scale') + t('weight_title'), `
     <div class="big">${U.kgToShow(cur)}<small> ${U.weightUnit()}</small></div>
     <div class="muted">${goalTxt}</div>
     <div>${t('bmi')}: <b>${b ?? '—'}</b> ${b ? '— ' + t(H.bmiCategory(b)) : ''}</div>
@@ -905,11 +904,11 @@ function vWeight() {
       <input name="w" type="text" inputmode="decimal" placeholder="${U.kgToShow(cur)}" required aria-label="${t('weight')}">
       <span class="unit">${U.weightUnit()}</span>
       <button class="btn primary">${t('add')}</button>
-    </form>`);
+    </form>`, 'hero h-weight');
   const sorted = data.weights;
-  html += card('📈 ' + t('weight_chart'), sorted.length >= 2 ? lineChart(sorted.slice(-60)) : `<div class="muted">${t('weight_chart_empty')}</div>`);
+  html += card(ic('target') + t('weight_chart'), sorted.length >= 2 ? lineChart(sorted.slice(-60)) : `<div class="muted">${t('weight_chart_empty')}</div>`);
   if (sorted.length) {
-    html += card('🗓️ ' + t('history'), `<ul class="list">${[...sorted].reverse().slice(0, 20).map(w => `<li>
+    html += card(ic('calendar') + t('history'), `<ul class="list">${[...sorted].reverse().slice(0, 20).map(w => `<li>
       <span class="grow">${esc(fmtDate(w.date, { day: 'numeric', month: 'long', year: 'numeric' }))}</span><b>${U.fmtWeight(w.kg)}</b>
       <button class="x" data-act="weight-del" data-date="${w.date}" aria-label="${t('delete')}">×</button></li>`).join('')}</ul>`);
   }
@@ -925,8 +924,8 @@ function vHabits() {
       <button class="toggle ${h.active ? 'on' : ''}" data-act="habit-active" data-id="${h.id}" role="switch" aria-checked="${h.active}" aria-label="${esc(nm(h.name))}"><i></i></button>
       ${h.custom ? `<button class="x" data-act="habit-del" data-id="${h.id}" aria-label="${t('delete')}">×</button>` : ''}</li>`;
   }).join('');
-  return card('✅ ' + t('habits_title'), `<p class="muted">${t('habits_hint')}</p><ul class="list habits-list">${rows}</ul>`)
-    + card('➕ ' + t('habit_new'), `<form data-form="habit" class="row">
+  return card(ic('calendar') + t('habits_title'), `<p class="muted">${t('habits_hint')}</p><ul class="list habits-list">${rows}</ul>`)
+    + card(ic('star') + t('habit_new'), `<form data-form="habit" class="row">
       <input name="emoji" class="emoji-in" maxlength="4" placeholder="⭐" aria-label="emoji">
       <input name="name" class="grow" required maxlength="50" placeholder="${t('habit_name_ph')}" aria-label="${t('habit_new')}">
       <button class="btn primary">${t('add')}</button></form>`);
@@ -935,17 +934,17 @@ function vHabits() {
 // ----- Награды -----
 function vAwards() {
   const pts = P.totalPoints(), lv = P.level(pts);
-  return card(`⭐ ${t('level')} ${lv.level}`, `
+  return card(`${ic('star')}${t('level')} ${lv.level}`, `
       <div class="big">${pts}<small> ${t('points')}</small></div>
       ${bar(lv.progress)}
       <div class="muted">${t('to_next', { n: P.POINTS_PER_LEVEL - lv.inLevel })}</div>
-      <div>🔥 ${t('active_streak', { n: P.activeStreak() })}</div>`)
-    + card('🏅 ' + t('badges'), `<div class="badges">${P.BADGES.map(b => {
+      <div>🔥 ${t('active_streak', { n: P.activeStreak() })}</div>`, 'hero h-level')
+    + card(ic('trophy') + t('badges'), `<div class="badges">${P.BADGES.map(b => {
       const got = data.badges[b.id];
       return `<div class="badge ${got ? 'got' : ''}"><div class="bem">${b.emoji}</div><b>${esc(nm(b.name))}</b>
         <small>${esc(nm(b.desc))}</small>${got ? `<small class="ok">✓ ${esc(fmtDate(got, { day: 'numeric', month: 'short' }))}</small>` : ''}</div>`;
     }).join('')}</div>`)
-    + card('ℹ️ ' + t('how_points'), `<ul class="plain">${t('points_rules')}</ul>`);
+    + card(ic('bulb') + t('how_points'), `<ul class="plain">${t('points_rules')}</ul>`);
 }
 
 // ----- Профиль (и первый запуск) -----
@@ -959,8 +958,8 @@ function vProfile(isOnb) {
   const wNow = p.weightKg ? U.kgToShow(isOnb ? p.weightKg : H.currentWeight()) : '';
   let html = '';
   if (isOnb) {
-    html += `<section class="welcome"><div class="logo">🌿</div><h2>${t('welcome_title')}</h2><p>${t('welcome_text')}</p></section>`;
-    html += card('🌐 ' + t('lang_units'), `
+    html += `<section class="welcome"><img class="welcome-art" src="img/ui/family.webp" alt=""><h2>${t('welcome_title')}</h2><p>${t('welcome_text')}</p></section>`;
+    html += card(ic('gear') + t('lang_units'), `
       <div class="chips">${chipBtn('set-lang', 'ru', 'Русский', s.lang === 'ru')}${chipBtn('set-lang', 'en', 'English', s.lang === 'en')}</div>
       <div class="chips">${chipBtn('set-units', 'metric', t('units_metric'), !us)}${chipBtn('set-units', 'us', t('units_us'), us)}</div>`);
   }
@@ -1047,7 +1046,7 @@ function vReminders() {
       : time(k + '_at', r[k].at);
   const rows = R.REM_TYPES.map(k => `<li class="rem"><label class="sw-l"><span class="em">${R.REM_EMOJI[k]}</span><span class="grow">${t('rem_n_' + k)}</span>
       <input type="checkbox" class="sw" name="on_${k}" ${r[k].on ? 'checked' : ''}></label><div class="rem-t">${inner(k)}</div></li>`).join('');
-  return card('🔔 ' + t('rem_title'), `<p>${t('rem_intro')}</p>${top}`)
+  return card(ic('bell') + t('rem_title'), `<p>${t('rem_intro')}</p>${top}`)
     + `<form data-form="reminders" class="card"><h2>${t('rem_list')}</h2><p class="muted">${t('rem_list_hint')}</p>
       <ul class="list">${rows}</ul><button class="btn primary full">${t('save')}</button></form>`;
 }
@@ -1075,9 +1074,9 @@ function loadYt() {
     .finally(() => { ui.ytLoading = false; if (route().name === 'antiyt') render(); });
 }
 function vAntiYt() {
-  let html = card('📵 ' + t('yt_title'), `<p>${t('yt_intro')}</p>`);
+  let html = card(ic('nophone') + t('yt_title'), `<p>${t('yt_intro')}</p>`);
   if (!AI.aiReady()) {
-    return html + card('⚙️ ' + t('ai_title'), `<p>${t('yt_need_ai')}</p><a class="btn primary full" href="#/settings">⚙️ ${t('ai_setup_btn')}</a>`);
+    return html + card(ic('gear') + t('ai_title'), `<p>${t('yt_need_ai')}</p><a class="btn primary full" href="#/settings">⚙️ ${t('ai_setup_btn')}</a>`);
   }
   const tok = data.device?.token, st = ui.yt;
   let body;
@@ -1094,23 +1093,23 @@ function vAntiYt() {
       ${barChart(st.days.map(d => d.min), st.days.map(d => fmtDate(d.date, { weekday: 'short' })), Math.max(st.limit, ...st.days.map(d => d.min)), st.limit, v => v)}` : ''}
       ${st.days.every(d => !d.opens) ? `<p class="muted">${t('yt_none')}</p>` : ''}`;
   }
-  html += card('📊 ' + t('yt_today'), body, '', tok ? `<button class="mini-txt" data-act="yt-refresh">↻ ${t('yt_refresh')}</button>` : '');
+  html += card(ic('calendar') + t('yt_today'), body, '', tok ? `<button class="mini-txt" data-act="yt-refresh">↻ ${t('yt_refresh')}</button>` : '');
   html += `<form data-form="ytlimit" class="card">
       <label class="fld"><span>${t('yt_limit_lbl')}</span><input name="limit" type="number" inputmode="numeric" min="5" max="600" required value="${R.antiLimit()}"></label>
       <p class="muted">${t('yt_limit_hint')}</p><button class="btn primary full">${t('save')}</button></form>`;
   const link = (lbl, url) => `<div class="lbl">${lbl}</div><div class="row"><input class="grow linkbox" readonly value="${esc(url)}" aria-label="${lbl}">
       <button type="button" class="btn ghost" data-act="copy" data-v="${esc(url)}">📋 ${t('copy')}</button></div>`;
-  html += card('🔗 ' + t('yt_links'), tok
+  html += card(ic('star') + t('yt_links'), tok
     ? link(t('yt_link_open'), R.hookUrl('open')) + link(t('yt_link_close'), R.hookUrl('close')) + `<p class="muted">${t('yt_links_note')}</p>`
     : `<button class="btn primary full" data-act="yt-links" ${ui.ytBusy ? 'disabled' : ''}>🔗 ${t('yt_links_btn')}</button><p class="muted">${t('yt_links_note')}</p>`);
-  html += card('🛠 ' + t('yt_setup'), ['1', '2', '3'].map(n => `<details class="howto"><summary>${t('yt_step' + n + '_t')}</summary><ol class="steps">${t('yt_step' + n)}</ol></details>`).join(''));
+  html += card(ic('gear') + t('yt_setup'), ['1', '2', '3'].map(n => `<details class="howto"><summary>${t('yt_step' + n + '_t')}</summary><ol class="steps">${t('yt_step' + n)}</ol></details>`).join(''));
   return html;
 }
 
 // ----- Резервная копия -----
 function vBackup() {
   const last = data.lastBackup ? new Date(data.lastBackup).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : t('never');
-  return card('💾 ' + t('backup_title'), `<p>${t('backup_text')}</p>
+  return card(ic('cloud') + t('backup_title'), `<p>${t('backup_text')}</p>
       <div class="muted">${t('last_backup')}: ${esc(last)}</div>
       <button class="btn primary full" data-act="backup-save">💾 ${t('backup_save')}</button>
       <button class="btn ghost full" data-act="backup-load">📂 ${t('backup_load')}</button>
@@ -1159,7 +1158,7 @@ async function backupLoad(file) {
 
 // ----- Установка -----
 function vInstall() {
-  return card('📲 ' + t('install_title'), `<ol class="steps">${t('install_steps')}</ol><p class="muted">${t('install_note')}</p>`);
+  return card(ic('house') + t('install_title'), `<ol class="steps">${t('install_steps')}</ol><p class="muted">${t('install_note')}</p>`);
 }
 
 // ================= КНОПКИ =================
@@ -1596,7 +1595,9 @@ const TITLES = {
   settings: 'settings_title', backup: 'backup_title', install: 'install_title', workout: 'workouts_title', onboarding: 'app_name',
 };
 function header(r) {
-  $('#title').textContent = t(TITLES[r.name] || 'app_name');
+  const home = r.name === 'today';
+  document.body.classList.toggle('home', home);
+  $('#title').innerHTML = home ? `<img class="logo" src="img/ui/logo.webp" alt="">${esc(t('app_name'))}` : esc(t(TITLES[r.name] || 'app_name'));
   const back = SUBPAGES.includes(r.name) ? '#/more'
     : r.name === 'workout' ? '#/sport'
       : r.name === 'recipe' ? '#/recipes'
@@ -1606,7 +1607,9 @@ function header(r) {
   b.hidden = !back;
   if (back) { b.href = back; b.setAttribute('aria-label', t('back')); }
   const showDate = ['today', 'food', 'sport', 'sleep'].includes(r.name);
-  $('#datebar').innerHTML = showDate
+  $('#datebar').innerHTML = home && ui.date === todayKey()
+    ? `<button data-act="date" data-n="-1" aria-label="${t('prev_day')}">‹</button>`
+    : showDate
     ? `<button data-act="date" data-n="-1" aria-label="${t('prev_day')}">‹</button>
        <span>${esc(dayLabel(ui.date))}</span>
        <button data-act="date" data-n="1" ${ui.date >= todayKey() ? 'disabled' : ''} aria-label="${t('next_day')}">›</button>`

@@ -78,6 +78,21 @@ for name in NAMES:
     ic = square(im.crop(gbox) if name.startswith('glass') else trim(im), 160)
     ic.save(os.path.join(OUT, name + '.webp'), 'WEBP', quality=88, method=6)
 
+NAMES2 = [
+    'house', 'plate', 'more', 'robot',
+    'bell', 'nophone', 'trophy', 'person',
+    'gear', 'book', 'cart', 'clipboard',
+    'cloud', 'stopwatch', 'heart', 'target',
+]
+if os.path.exists(os.path.join(HERE, 'icons2_raw.png')):
+    sheet = Image.open(os.path.join(HERE, 'icons2_raw.png'))
+    W, H = sheet.size
+    cw, ch = W / 4, H / 4
+    for i, name in enumerate(NAMES2):
+        x, y = i % 4, i // 4
+        cell = sheet.crop((round(x * cw), round(y * ch), round((x + 1) * cw), round((y + 1) * ch)))
+        square(trim(key(cell)), 160).save(os.path.join(OUT, name + '.webp'), 'WEBP', quality=88, method=6)
+
 for src, name, width in [('family_raw.png', 'family', 640), ('tip_raw.png', 'park', 480)]:
     im = trim(key(Image.open(os.path.join(HERE, src))), 0)
     h = round(im.size[1] * width / im.size[0])

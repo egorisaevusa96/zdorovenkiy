@@ -1,0 +1,8 @@
+Create an ICON SHEET for a mobile app, in exactly the same cute glossy 3D cartoon style as the icons in the attached reference screenshot (soft 3D, rounded, saturated colors, gentle highlights).
+Layout: a strict 4 x 4 grid, 16 separate icons, each centered in its own equal square cell with generous empty margin around it, icons must NOT touch or overlap each other or the cell borders. No text, no labels, no grid lines, no frames, no cards behind icons.
+BACKGROUND: perfectly flat solid pure magenta color #FF00FF everywhere behind and between icons — no gradient, no floor, no drop shadow on the background, no glow. Do not use magenta or pink anywhere inside the icons themselves.
+Icons in order, row by row (left to right):
+Row 1: 1) cozy little house with orange roof, 2) white plate with fork and knife, 3) round orange speech-bubble-like button with three white dots (menu "more"), 4) friendly cute robot head (AI coach).
+Row 2: 5) golden notification bell, 6) smartphone with a red "no" sign over a play button (anti-YouTube), 7) golden trophy cup, 8) cute person avatar bust (profile).
+Row 3: 9) blue gear (settings), 10) open recipe book with a green bookmark, 11) shopping cart with vegetables, 12) clipboard with a checklist (weekly menu).
+Row 4: 13) blue cloud with an up arrow (backup), 14) orange stopwatch (workout timer), 15) red heart (mood journal), 16) red-white target with an arrow (goal).

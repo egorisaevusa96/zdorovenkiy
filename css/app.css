@@ -318,9 +318,9 @@ textarea { resize: vertical; }
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   color: var(--muted); font-size: 11px; font-weight: 600; max-width: 120px;
 }
-.tabs .ic { font-size: 22px; filter: grayscale(1); opacity: .6; }
+.tabs .ic { width: 30px; height: 30px; object-fit: contain; filter: grayscale(1); opacity: .55; transition: .15s; }
 .tabs a.on { color: var(--primary); }
-.tabs a.on .ic { background: var(--primary-soft); border-radius: 12px; padding: 2px 14px; }
+.tabs a.on .ic { background: var(--primary-soft); border-radius: 12px; padding: 2px 14px; width: 58px; transform: scale(1.06); }
 .tabs a.on .ic { filter: none; opacity: 1; }
 
 /* ---------- Нижняя панель (форма) ---------- */
@@ -475,3 +475,118 @@ h1, h2, h3, .big, .btn, .tabs a { font-weight: 800; }
   .tile .i3 { width: 40px; height: 40px; }
 }
 .card-h h2 .i3 { width: 32px; height: 32px; vertical-align: middle; margin: -6px 6px -4px 0; }
+
+/* Цветная верхняя карточка на каждом экране */
+.hero { color: #fff; border: 0; --hero-ink: var(--primary); }
+.h-food { background: var(--c-food); box-shadow: 0 8px 20px rgba(255, 116, 0, .25); --hero-ink: #e86a00; }
+.h-steps { background: var(--c-steps); box-shadow: 0 8px 20px rgba(85, 184, 15, .25); --hero-ink: #3f9a08; }
+.h-sport { background: var(--c-sport); box-shadow: 0 8px 20px rgba(255, 59, 133, .25); --hero-ink: #e0276f; }
+.h-sleep { background: var(--c-sleep); box-shadow: 0 8px 20px rgba(124, 60, 240, .25); --hero-ink: #6a2fd8; }
+.h-weight { background: var(--c-weight); box-shadow: 0 8px 20px rgba(29, 154, 240, .25); --hero-ink: #137fd0; }
+.h-level { background: linear-gradient(135deg, #ffc93c, #ff8a1a); box-shadow: 0 8px 20px rgba(255, 138, 26, .25); --hero-ink: #d86a00; }
+.hero .card-h h2 { font-size: 21px; font-weight: 900; }
+.hero .card-h h2 .i3 { width: 46px; height: 46px; margin: -10px 8px -8px -2px; }
+.hero .muted, .hero .big small, .hero .unit, .hero .lbl, .hero .fld > span { color: rgba(255, 255, 255, .9); }
+.hero .ok { color: #fff; }
+.hero a:not(.btn) { color: #fff; text-decoration: underline; }
+.hero .bar { background: rgba(255, 255, 255, .35); height: 12px; }
+.hero .bar i { background: #fff; }
+.hero input, .hero select, .hero textarea { background: #fff; color: #1f2335; border-color: transparent; }
+.hero .btn.primary { background: #fff; color: var(--hero-ink); box-shadow: 0 3px 0 rgba(0, 0, 0, .12); }
+.hero .btn.ghost { background: rgba(255, 255, 255, .25); color: #fff; }
+.hero .scale span { background: rgba(255, 255, 255, .2); border-color: transparent; color: #fff; }
+.hero .scale input:checked + span { background: #fff; color: var(--hero-ink); }
+.hero .list li { border-color: rgba(255, 255, 255, .3); }
+.hero .x { color: #fff; }
+.hero .mini { background: #fff; color: var(--hero-ink); }
+.foodtop + .row .btn.ghost { background: var(--primary-soft); }
+h2.sec { display: flex; align-items: center; gap: 6px; }
+h2.sec .i3 { width: 34px; height: 34px; }
+.menu .em3 { width: 40px; height: 40px; flex: none; }
+.menu a { padding: 10px 0; }
+.wcard { border-left: 6px solid #ff6fae; }
+.wcard:nth-of-type(3n+1) { border-left-color: #48c1ff; }
+.wcard:nth-of-type(3n+2) { border-left-color: #8fdc2c; }
+.badge.got { background: #fff2c7; }
+@media (prefers-color-scheme: dark) { .badge.got { background: #4a4024; } }
+.welcome-art { width: 86%; max-width: 360px; height: auto; display: block; margin: 0 auto 4px; }
+.welcome h2 { font-size: 28px; font-weight: 900; }
+
+/* ---------- Ближе к концепту B ---------- */
+body { background: var(--bg); }
+:root { --bg: #ffffff; }
+@media (prefers-color-scheme: dark) { :root { --bg: #12173a; } }
+.top h1 { display: flex; align-items: center; gap: 10px; }
+.top h1 .logo { width: 40px; height: 40px; flex: none; border-radius: 11px; box-shadow: 0 3px 8px rgba(255, 122, 26, .3); }
+body.home .top h1 { font-size: 24px; }
+
+/* Приветствие: картинка семьи крупно справа, заходит под шапку */
+.hello { min-height: 170px; margin-top: -8px; }
+.hello-t { max-width: 56%; }
+.hello .hi { font-size: 28px; }
+.hello-art { width: 56%; max-width: 300px; right: -14px; bottom: -10px; }
+
+/* Цветные карточки — объём как у кнопок в игре */
+.c-water, .c-food, .tile, .hero {
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .35), inset 0 -4px 0 rgba(0, 0, 0, .10), 0 8px 18px rgba(31, 35, 53, .14);
+}
+.c-water h2, .c-food h2 { font-size: 23px; letter-spacing: -.2px; }
+
+/* Вода: стаканы и кнопка в одну строку */
+.c-water .card-h { align-items: flex-start; }
+.minus { appearance: none; border: 0; width: 32px; height: 32px; flex: none; border-radius: 50%; background: rgba(255, 255, 255, .25); color: #fff;
+  font: inherit; font-size: 22px; font-weight: 900; line-height: 1; cursor: pointer; }
+.minus:disabled { opacity: .35; }
+.water-row { display: flex; align-items: center; gap: 8px; }
+.water-row .cups { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; }
+.water-row .cup3 { width: 100%; height: auto; aspect-ratio: 4 / 5; max-height: 48px; }
+.water-row .wbtn { flex: none; font-size: 16px; padding: 8px 14px; min-height: 44px; white-space: nowrap; }
+
+/* Еда: камера и подпись-«таблетка», как на картинке */
+.photo-btn { background: transparent; box-shadow: none; width: 98px; padding: 0; gap: 0; color: #3a2a1a; }
+.photo-btn .i3 { width: 66px; height: 66px; margin-bottom: -10px; position: relative; z-index: 1; }
+.photo-btn span { background: #fff; border-radius: 99px; padding: 10px 10px 8px; box-shadow: 0 3px 0 rgba(0, 0, 0, .12); white-space: nowrap; }
+.meals li { font-size: 14px; }
+.food-b { align-items: center; }
+
+/* Плитки: значки крупнее */
+.tile { padding: 12px 8px; gap: 6px; }
+.tile .i3 { width: 60px; height: 60px; margin: -6px 0; }
+
+/* Привычки: одной полосой, значок календаря слева */
+.c-habits { flex-direction: row; align-items: center; gap: 10px; padding: 12px 14px; }
+.h-go { flex: none; display: flex; }
+.c-habits .h-ic { width: 46px; height: 46px; }
+.c-habits .hchips { flex: 1; min-width: 0; gap: 0; row-gap: 6px; }
+.c-habits .hchip { background: transparent; box-shadow: none; border-radius: 0; padding: 4px 10px; border-left: 2px solid rgba(0, 0, 0, .08); font-size: 16px; font-weight: 800; }
+.c-habits .hchip:first-child { border-left: 0; padding-left: 2px; }
+@media (prefers-color-scheme: dark) { .c-habits .hchip { border-left-color: rgba(255, 255, 255, .12); } }
+
+/* «Совет дня» */
+.tip-t p { font-size: 17px; font-weight: 800; line-height: 1.25; }
+.c-tip .bulb { width: 56px; height: 56px; }
+
+/* Искорки-чёрточки, как на картинке */
+.spark { position: relative; }
+.spark::after {
+  content: ''; position: absolute; top: 8px; right: 12px; width: 28px; height: 22px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 22'%3E%3Cg stroke='%23ffe14d' stroke-width='3.2' stroke-linecap='round'%3E%3Cpath d='M4 13l-2-5M12 9V2M20 13l4-5'/%3E%3C/g%3E%3C/svg%3E") no-repeat center / contain;
+}
+.c-water.spark::after { right: 52px; }
+.photo-btn.spark::after { top: -12px; right: -2px; }
+.h-go.spark::after { top: -10px; right: auto; left: -8px; transform: scaleX(-1); width: 22px; height: 18px; }
+.c-food.spark::after { display: none; }
+
+/* Нижнее меню — контурные значки */
+.tabs .ic { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: none; opacity: 1; }
+.tabs .ic circle { fill: currentColor; stroke: none; }
+.tabs a { color: #8a8fa3; font-size: 12px; }
+.tabs a.on .ic { width: 64px; padding: 4px 18px; height: 36px; transform: none; }
+.tabs a.on { color: var(--primary); }
+.hello-t { max-width: 62%; }
+.hello .hi { font-size: 26px; }
+.hello-art { width: 50%; }
+/* привычки: «таблетки» с переносом, если не помещаются в одну строку */
+.c-habits .hchips { gap: 8px; }
+.c-habits .hchip { background: var(--card); border: 0; border-radius: 99px; padding: 6px 12px 6px 6px; box-shadow: 0 2px 0 rgba(0, 0, 0, .06); text-align: left; font-size: 15px; }
+.c-habits .hchip:first-child { padding-left: 6px; }

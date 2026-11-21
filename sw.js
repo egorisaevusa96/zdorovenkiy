@@ -1,8 +1,9 @@
 // Service worker: чтобы программа открывалась без интернета.
 // Стратегия «сначала сеть»: при интернете всегда свежая версия, без него — сохранённая.
-const CACHE = 'zdorovenkiy-v7';
+const CACHE = 'zdorovenkiy-v8';
 const UI_IMG = ['glass-full', 'glass-empty', 'salad', 'camera', 'sneaker', 'dumbbell', 'moon', 'scale', 'calendar', 'bulb',
-  'fire', 'star', 'egg', 'soup', 'fish', 'apple', 'family', 'park'].map(n => `./img/ui/${n}.webp`);
+  'fire', 'star', 'egg', 'soup', 'fish', 'apple', 'family', 'park', 'logo', 'house', 'plate', 'more', 'robot', 'bell', 'nophone', 'trophy',
+  'person', 'gear', 'book', 'cart', 'clipboard', 'cloud', 'stopwatch', 'heart', 'target'].map(n => `./img/ui/${n}.webp`);
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/store.js', './js/i18n.js', './js/units.js', './js/health.js', './js/progress.js', './js/content.js',

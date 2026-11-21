@@ -1,0 +1,7 @@
+Design 4 DIFFERENT iPhone app icon concepts for a cheerful family healthy-lifestyle app called "Здаровенький", in the same cute glossy 3D cartoon style and bright colors as the attached reference screenshot.
+Layout: a 2 x 2 grid on a plain white background, each icon is a rounded-square iOS app icon (squircle) with a little white space between them. No text, no letters on the icons.
+1) top-left: a happy smiling cartoon sun-like character with raised arms on an orange gradient background;
+2) top-right: a cute smiling water drop character holding a green leaf, on a sky-blue gradient;
+3) bottom-left: a cute smiling red apple character with a green leaf and a tiny heart, on a lime-green gradient;
+4) bottom-right: four small cheerful round faces (a family) forming a heart shape, on a purple-pink gradient.
+Each icon must read clearly at small size: one big simple central shape, bold, high contrast.
