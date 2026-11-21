@@ -47,19 +47,21 @@ const LANG_NAME = { ru: 'Russian', en: 'English' };
 // ---------- Вызов Claude ----------
 // Потоковый запрос (не упирается в тайм-ауты) + запасная модель,
 // если основная откажется отвечать по правилам безопасности.
-async function askClaude(env, { system, messages, effort, maxTokens, schema }) {
+async function askClaude(env, { system, messages, effort, maxTokens, schema, model }) {
   if (!env.ANTHROPIC_API_KEY) throw new UserError('no_key', 500);
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const params = {
-    model: env.MODEL || 'claude-opus-5-5',
+    model: model || env.MODEL || 'claude-opus-5-5',
     max_tokens: maxTokens,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
+    // Запасная модель есть только у больших моделей (у Haiku её нет)
+    ...(model ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
     system,
     messages,
     output_config: { effort, ...(schema ? { format: { type: 'json_schema', schema } } : {}) },
   };
-  const msg = await client.beta.messages.stream(params).finalMessage();
+  const msg = params.betas
+    ? await client.beta.messages.stream(params).finalMessage()
+    : await client.messages.stream(params).finalMessage();
   if (msg.stop_reason === 'refusal') throw new UserError('refusal', 422);
   if (msg.stop_reason === 'max_tokens') throw new UserError('too_long', 502);
   const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
@@ -121,8 +123,10 @@ Write "name", item names and "comment" in ${LANG_NAME[lang]}. "name" is a short 
     { type: 'image', source: { type: 'base64', media_type: type, data: image } },
     { type: 'text', text: note ? `User's note: ${note}` : 'Estimate the calories of this meal.' },
   ];
-  const out = await askClaude(env, { system, messages: [{ role: 'user', content }], effort: 'medium', maxTokens: 16000, schema: PHOTO_SCHEMA });
-  out.kcal = int(out.kcal, 0, 10000, 0);
+  const out = await askClaude(env, { system, messages: [{ role: 'user', content }], effort: 'medium', maxTokens: 16000, schema: PHOTO_SCHEMA, model: env.PHOTO_MODEL || 'claude-haiku-5-5' });
+  // Итог = сумма продуктов (ИИ иногда ошибается в сложении)
+  const sum = (out.items || []).reduce((s, i) => s + int(i.kcal, 0, 10000, 0), 0);
+  out.kcal = int(sum || out.kcal, 0, 10000, 0);
   return out;
 }
 

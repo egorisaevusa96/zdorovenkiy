@@ -20,3 +20,5 @@ new_sqlite_classes = ["MenuJob"]
 [vars]
 # Модель Claude
 MODEL = "claude-opus-5-5"
+# Модель для фото еды — дешёвая и быстрая (если будет узнавать плохо: "claude-sonnet-5-5")
+PHOTO_MODEL = "claude-haiku-5-5"
