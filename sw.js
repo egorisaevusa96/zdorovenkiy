@@ -1,6 +1,6 @@
 // Service worker: чтобы программа открывалась без интернета.
 // Стратегия «сначала сеть»: при интернете всегда свежая версия, без него — сохранённая.
-const CACHE = 'zdorovenkiy-v3';
+const CACHE = 'zdorovenkiy-v4';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/store.js', './js/i18n.js', './js/units.js', './js/health.js', './js/progress.js', './js/content.js',

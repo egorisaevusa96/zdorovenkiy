@@ -8,7 +8,7 @@ import * as P from './progress.js';
 export const aiReady = () => !!(data.settings.aiUrl && data.settings.aiCode);
 
 // Сколько ждём ответа (меню — долго, ИИ пишет целую неделю рецептов)
-const TIMEOUT = { ping: 20, photo: 90, coach: 90, menu: 300 };
+const TIMEOUT = { ping: 20, photo: 90, coach: 90, menu: 300, 'menu-start': 30, 'menu-status': 20 };
 
 export class AiError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -44,6 +44,29 @@ export async function aiCall(path, body = {}, opts = {}) {
   try { out = await res.json(); } catch { /* не JSON */ }
   if (!res.ok || !out || out.error) throw new AiError(out?.error || (res.status === 404 ? 'not_found' : 'server'));
   return out;
+}
+
+// Меню от ИИ: сервер делает его в фоне, а мы раз в 4 секунды спрашиваем «готово?».
+// Если связь моргнула или телефон уснул — просто спрашиваем дальше, меню не теряется.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+export async function aiMenu(body) {
+  const { job } = await aiCall('menu-start', body);
+  const until = Date.now() + 10 * 60_000;
+  let fails = 0;
+  for (;;) {
+    await sleep(4000);
+    let st = null;
+    try {
+      st = await aiCall('menu-status', { job });
+      fails = 0;
+    } catch (e) {
+      if (!['network', 'timeout', 'offline', 'server'].includes(e.code) || ++fails > 40) throw e;
+    }
+    if (st?.status === 'done') return st.result;
+    if (st?.status === 'error') throw new AiError(st.code || 'server');
+    if (st?.status === 'missing') throw new AiError('server');
+    if (Date.now() > until) throw new AiError('timeout');
+  }
 }
 
 // Фото → JPEG поменьше (длинная сторона до 1024 px), чтобы быстро отправить

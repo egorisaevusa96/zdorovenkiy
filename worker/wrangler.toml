@@ -7,6 +7,16 @@ main = "src/index.js"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
 
+# «Ящик для заданий»: меню от ИИ делается в фоне, а телефон спрашивает «готово?».
+# Так меню не теряется, если связь с телефоном оборвалась.
+[[durable_objects.bindings]]
+name = "JOBS"
+class_name = "MenuJob"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MenuJob"]
+
 [vars]
 # Модель Claude
 MODEL = "claude-opus-5-5"

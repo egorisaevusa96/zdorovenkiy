@@ -375,7 +375,7 @@ async function runAiMenu(servings, meals, wishes) {
   openSheet(aiMenuSheet('wait'));
   const p = data.profile;
   try {
-    const res = await AI.aiCall('menu', {
+    const res = await AI.aiMenu({
       profile: { sex: p.sex, age: p.age, goal: p.goal, allergies: p.allergies, dislikes: p.dislikes, diet: p.diet },
       kcalGoal: H.kcalGoal(), servings, meals, wishes,
     });

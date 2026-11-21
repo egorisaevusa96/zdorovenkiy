@@ -5,9 +5,11 @@
 // Адреса (все POST, JSON):
 //   /ping   — проверка связи и пароля
 //   /photo  — фото еды → название и калории
-//   /menu   — меню на неделю с рецептами
+//   /menu   — меню на неделю с рецептами (старый способ, одним долгим ответом)
+//   /menu-start, /menu-status — меню через задание в фоне (основной способ)
 //   /coach  — ИИ-тренер: разбор недели или ответ на вопрос
 import Anthropic from '@anthropic-ai/sdk';
+import { DurableObject } from 'cloudflare:workers';
 
 const SECTIONS = ['veg', 'fruit', 'meat', 'fish', 'dairy', 'eggs', 'grain', 'bakery', 'canned', 'frozen', 'nuts', 'other', 'spice'];
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -262,6 +264,44 @@ function errorBody(e) {
   return { error: 'server' };
 }
 
+// ---------- Задание «меню» в фоне ----------
+// Меню пишется 1–3 минуты. Чтобы оно не терялось при обрыве связи с телефоном,
+// его делает отдельный «ящик» (Durable Object) по будильнику, а телефон раз в несколько секунд
+// спрашивает статус. Через час после готовности ящик сам очищается.
+export class MenuJob extends DurableObject {
+  async start(body) {
+    const cur = await this.ctx.storage.get('state');
+    if (cur) return cur.status;
+    await this.ctx.storage.put({ state: { status: 'running', at: Date.now() }, body });
+    await this.ctx.storage.setAlarm(Date.now());
+    return 'running';
+  }
+
+  async status() {
+    const st = await this.ctx.storage.get('state');
+    if (!st) return { status: 'missing' };
+    if (st.status === 'running' && Date.now() - st.at > 15 * 60_000) return { status: 'error', code: 'timeout' };
+    return st;
+  }
+
+  async alarm() {
+    const st = await this.ctx.storage.get('state');
+    if (!st || st.status !== 'running') { await this.ctx.storage.deleteAll(); return; } // уборка
+    const body = await this.ctx.storage.get('body');
+    let next;
+    try {
+      next = { status: 'done', result: await menu(this.env, body) };
+    } catch (e) {
+      const out = errorBody(e);
+      if (out.error === 'server' || out.detail) console.error(e);
+      next = { status: 'error', code: out.error };
+    }
+    await this.ctx.storage.delete('body');
+    await this.ctx.storage.put('state', next);
+    await this.ctx.storage.setAlarm(Date.now() + 60 * 60_000);
+  }
+}
+
 // Ответ «по кусочкам»: пока Claude думает (меню — до нескольких минут), каждые 10 секунд
 // отправляем пробел, чтобы соединение не оборвалось. Пробелы перед JSON не мешают его прочитать.
 // Код ответа здесь всегда 200, а ошибка приходит внутри: {"error": "..."}.
@@ -294,7 +334,8 @@ export default {
     const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     if (request.method === 'GET' && path === '/') return json({ app: 'zdorovenkiy-ai', ok: true });
     const handler = ROUTES[path];
-    if (!handler || request.method !== 'POST') return json({ error: 'not_found' }, 404);
+    const isJob = path === '/menu-start' || path === '/menu-status';
+    if ((!handler && !isJob) || request.method !== 'POST') return json({ error: 'not_found' }, 404);
     if (!env.FAMILY_CODE) return json({ error: 'no_code_set' }, 500);
     if (!sameCode(request.headers.get('X-Family-Code'), env.FAMILY_CODE)) return json({ error: 'bad_code' }, 401);
     let body;
@@ -304,6 +345,18 @@ export default {
       body = JSON.parse(raw || '{}');
     } catch {
       return json({ error: 'bad_request' }, 400);
+    }
+    // Меню — через «ящик для заданий»: сразу отдаём номер задания, телефон потом спрашивает «готово?»
+    if (path === '/menu-start') {
+      if (!env.JOBS) return json({ error: 'server' }, 500);
+      const job = crypto.randomUUID();
+      await env.JOBS.get(env.JOBS.idFromName(job)).start(body);
+      return json({ job });
+    }
+    if (path === '/menu-status') {
+      const job = String(body.job || '');
+      if (!env.JOBS || !/^[0-9a-f-]{36}$/.test(job)) return json({ error: 'bad_request' }, 400);
+      return json(await env.JOBS.get(env.JOBS.idFromName(job)).status());
     }
     return streamed(ctx, () => handler(env, body));
   },
