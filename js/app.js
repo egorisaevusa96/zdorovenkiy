@@ -8,6 +8,7 @@ import { SPORT_TYPES, WORKOUTS, FOOD_PRESETS, TIPS } from './content.js';
 import { ING } from './recipes.js';
 import * as PL from './planner.js';
 import * as AI from './ai.js';
+import * as R from './remind.js';
 
 const $ = sel => document.querySelector(sel);
 const view = $('#view');
@@ -49,7 +50,8 @@ function mealByTime() {
   const h = new Date().getHours();
   return h < 11 ? 'breakfast' : h < 16 ? 'lunch' : h < 21 ? 'dinner' : 'snack';
 }
-const AIE = ['not_set', 'offline', 'timeout', 'network', 'bad_code', 'no_key', 'no_code_set', 'bad_key', 'busy', 'refusal', 'too_long', 'bad_answer', 'bad_image', 'too_big', 'not_found', 'bad_request', 'server'];
+const AIE = ['not_set', 'offline', 'timeout', 'network', 'bad_code', 'no_key', 'no_code_set', 'bad_key', 'busy', 'refusal', 'too_long', 'bad_answer', 'bad_image', 'too_big', 'not_found', 'bad_request', 'server',
+  'denied', 'no_push', 'bad_device', 'too_many', 'no_sub', 'no_vapid'];
 const aiErr = e => t('aie_' + (AIE.includes(e?.code) ? e.code : 'server'));
 function needAi() {
   if (AI.aiReady()) return false;
@@ -84,6 +86,7 @@ function commit() {
   save();
   const fresh = P.checkBadges();
   if (fresh.length) save();
+  R.statusChanged();
   render();
   fresh.forEach((b, i) => setTimeout(() => toast(`${b.emoji} ${t('new_badge')}: ${nm(b.name)}`), 700 + i * 2800));
 }
@@ -774,7 +777,7 @@ function updateSleepPreview(f) {
 // ----- Ещё -----
 function vMore() {
   const items = [
-    ['#/coach', '🤖', 'coach_title'], ['#/weight', '⚖️', 'weight_title'], ['#/habits', '✅', 'habits_title'], ['#/awards', '🏅', 'awards_title'],
+    ['#/coach', '🤖', 'coach_title'], ['#/reminders', '🔔', 'rem_title'], ['#/antiyt', '📵', 'yt_title'], ['#/weight', '⚖️', 'weight_title'], ['#/habits', '✅', 'habits_title'], ['#/awards', '🏅', 'awards_title'],
     ['#/profile', '👤', 'profile_title'], ['#/settings', '⚙️', 'settings_title'], ['#/backup', '💾', 'backup_title'],
     ['#/install', '📲', 'install_title'],
   ];
@@ -971,6 +974,95 @@ function vSettings() {
   </form>`;
 }
 
+// ----- Напоминания -----
+const wdName = i => new Date(2023, 0, 1 + i).toLocaleDateString(locale(), { weekday: 'long' }); // 1.01.2023 — воскресенье
+function vReminders() {
+  let top;
+  if (!AI.aiReady()) {
+    top = `<p>${t('rem_need_ai')}</p><a class="btn primary full" href="#/settings">⚙️ ${t('ai_setup_btn')}</a>`;
+  } else if (!R.pushSupported()) {
+    top = isStandalone() ? `<p>${t('rem_old_ios')}</p>`
+      : `<p>${t('rem_need_install')}</p><a class="btn primary full" href="#/install">📲 ${t('how_install')}</a>`;
+  } else if (ui.pushBusy) {
+    top = `<div class="ai-wait"><span class="spin"></span>${t('ai_testing')}</div>`;
+  } else if (R.pushOn()) {
+    top = `<p class="ok-txt">${t('rem_on_text')}</p>
+      <div class="row"><button class="btn ghost grow" data-act="push-test">🧪 ${t('rem_test')}</button>
+      <button class="btn ghost grow" data-act="push-off">${t('rem_disable')}</button></div>`;
+  } else {
+    top = `<p class="muted">${t('rem_off_text')}</p>${Notification.permission === 'denied' ? `<p class="bad">${t('rem_denied')}</p>` : ''}
+      <button class="btn primary full big-btn" data-act="push-on">🔔 ${t('rem_enable')}</button>`;
+  }
+  const r = R.reminders();
+  const time = (name, v) => `<input type="time" name="${name}" value="${esc(v)}" required aria-label="${t('rem_from')}">`;
+  const days = (name, v) => `<select name="${name}">${[1, 2, 3, 4, 5, 6, 0].map(i => `<option value="${i}" ${Number(v) === i ? 'selected' : ''}>${esc(wdName(i))}</option>`).join('')}</select>`;
+  const inner = k => k === 'water'
+    ? `<span>${t('rem_every')}</span><select name="water_every">${[1, 2, 3, 4].map(h => `<option value="${h}" ${Number(r.water.every) === h ? 'selected' : ''}>${h} ${t('rem_hours')}</option>`).join('')}</select>
+       <span>${t('rem_from')}</span>${time('water_from', r.water.from)}<span>${t('rem_to')}</span>${time('water_to', r.water.to)}`
+    : (k === 'weight' || k === 'backup') ? days(k + '_day', r[k].day) + time(k + '_at', r[k].at)
+      : time(k + '_at', r[k].at);
+  const rows = R.REM_TYPES.map(k => `<li class="rem"><label class="sw-l"><span class="em">${R.REM_EMOJI[k]}</span><span class="grow">${t('rem_n_' + k)}</span>
+      <input type="checkbox" class="sw" name="on_${k}" ${r[k].on ? 'checked' : ''}></label><div class="rem-t">${inner(k)}</div></li>`).join('');
+  return card('🔔 ' + t('rem_title'), `<p>${t('rem_intro')}</p>${top}`)
+    + `<form data-form="reminders" class="card"><h2>${t('rem_list')}</h2><p class="muted">${t('rem_list_hint')}</p>
+      <ul class="list">${rows}</ul><button class="btn primary full">${t('save')}</button></form>`;
+}
+async function pushAction(fn, okMsg) {
+  ui.pushBusy = true;
+  render();
+  try {
+    await fn;
+    if (okMsg) toast(okMsg);
+  } catch (e) {
+    toast('⚠️ ' + aiErr(e));
+  } finally {
+    ui.pushBusy = false;
+    render();
+  }
+}
+
+// ----- Анти-YouTube -----
+function loadYt() {
+  if (ui.ytLoading || ui.yt || !data.device?.token || !AI.aiReady()) return;
+  ui.ytLoading = true;
+  R.ytStats()
+    .then(s => { ui.yt = s; })
+    .catch(e => { ui.yt = { error: aiErr(e) }; })
+    .finally(() => { ui.ytLoading = false; if (route().name === 'antiyt') render(); });
+}
+function vAntiYt() {
+  let html = card('📵 ' + t('yt_title'), `<p>${t('yt_intro')}</p>`);
+  if (!AI.aiReady()) {
+    return html + card('⚙️ ' + t('ai_title'), `<p>${t('yt_need_ai')}</p><a class="btn primary full" href="#/settings">⚙️ ${t('ai_setup_btn')}</a>`);
+  }
+  const tok = data.device?.token, st = ui.yt;
+  let body;
+  if (!tok) body = `<p class="muted">${t('yt_none')}</p>`;
+  else if (!st) body = `<div class="ai-wait"><span class="spin"></span>${t('yt_loading')}</div>`;
+  else if (st.error) body = `<p class="bad">⚠️ ${esc(st.error)}</p>`;
+  else {
+    const today = st.days[st.days.length - 1], over = today.min >= st.limit;
+    body = `<div class="big">${today.opens} <small>${t('yt_opens')}</small></div>
+      <div class="${over ? 'bad' : 'muted'}">${t('yt_min_of', { m: today.min, l: st.limit })}${over ? ' — ' + t('yt_over') : ''}</div>
+      ${bar(today.min / st.limit, over ? 'bad' : '')}
+      ${st.inApp ? `<p class="muted">${t('yt_in_app')}</p>` : ''}
+      ${st.days.some(d => d.min > 0) ? `<div class="lbl">${t('yt_week')}</div>
+      ${barChart(st.days.map(d => d.min), st.days.map(d => fmtDate(d.date, { weekday: 'short' })), Math.max(st.limit, ...st.days.map(d => d.min)), st.limit, v => v)}` : ''}
+      ${st.days.every(d => !d.opens) ? `<p class="muted">${t('yt_none')}</p>` : ''}`;
+  }
+  html += card('📊 ' + t('yt_today'), body, '', tok ? `<button class="mini-txt" data-act="yt-refresh">↻ ${t('yt_refresh')}</button>` : '');
+  html += `<form data-form="ytlimit" class="card">
+      <label class="fld"><span>${t('yt_limit_lbl')}</span><input name="limit" type="number" inputmode="numeric" min="5" max="600" required value="${R.antiLimit()}"></label>
+      <p class="muted">${t('yt_limit_hint')}</p><button class="btn primary full">${t('save')}</button></form>`;
+  const link = (lbl, url) => `<div class="lbl">${lbl}</div><div class="row"><input class="grow linkbox" readonly value="${esc(url)}" aria-label="${lbl}">
+      <button type="button" class="btn ghost" data-act="copy" data-v="${esc(url)}">📋 ${t('copy')}</button></div>`;
+  html += card('🔗 ' + t('yt_links'), tok
+    ? link(t('yt_link_open'), R.hookUrl('open')) + link(t('yt_link_close'), R.hookUrl('close')) + `<p class="muted">${t('yt_links_note')}</p>`
+    : `<button class="btn primary full" data-act="yt-links" ${ui.ytBusy ? 'disabled' : ''}>🔗 ${t('yt_links_btn')}</button><p class="muted">${t('yt_links_note')}</p>`);
+  html += card('🛠 ' + t('yt_setup'), ['1', '2', '3'].map(n => `<details class="howto"><summary>${t('yt_step' + n + '_t')}</summary><ol class="steps">${t('yt_step' + n)}</ol></details>`).join(''));
+  return html;
+}
+
 // ----- Резервная копия -----
 function vBackup() {
   const last = data.lastBackup ? new Date(data.lastBackup).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : t('never');
@@ -1117,6 +1209,7 @@ const ACTIONS = {
   'backup-load': () => $('#backup-file')?.click(),
   'wipe': () => {
     if (!confirm(t('wipe_q')) || !confirm(t('wipe_q2'))) return;
+    if (R.pushOn()) R.disablePush().catch(() => {});
     cleanupWorkout();
     wipeData();
     ui.date = todayKey();
@@ -1170,6 +1263,37 @@ const ACTIONS = {
       out.innerHTML = `<span class="bad">⚠️ ${esc(aiErr(e))}</span>`;
     } finally {
       el.disabled = false;
+    }
+  },
+  // --- Напоминания и анти-YouTube ---
+  'push-on': () => {
+    const p = R.enablePush(); // разрешение спрашивается сразу, пока «нажатие» ещё свежее
+    pushAction(p, t('rem_enabled'));
+  },
+  'push-off': () => pushAction(R.disablePush(), t('rem_disabled')),
+  'push-test': () => pushAction(R.testPush(), t('rem_test_sent')),
+  'yt-refresh': () => { ui.yt = null; render(); },
+  'yt-links': async () => {
+    ui.ytBusy = true;
+    render();
+    try {
+      await R.saveLimit(R.antiLimit());
+      ui.yt = null;
+    } catch (e) {
+      toast('⚠️ ' + aiErr(e));
+    }
+    ui.ytBusy = false;
+    render();
+  },
+  'copy': el => {
+    const v = el.dataset.v;
+    const done = () => toast(t('copied'));
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(v).then(done).catch(() => { el.previousElementSibling?.select(); document.execCommand('copy'); done(); });
+    } else {
+      el.previousElementSibling?.select();
+      document.execCommand('copy');
+      done();
     }
   },
   'menu-new': () => {
@@ -1306,6 +1430,7 @@ const FORMS = {
       return;
     }
     commit();
+    R.syncSettings().catch(() => {});
     toast(t('saved'));
   },
   plan: (f, fd) => {
@@ -1338,6 +1463,38 @@ const FORMS = {
     data.settings.aiCode = String(fd.get('aiCode') || '').trim();
     commit();
     toast(t('saved'));
+  },
+  reminders: async (f, fd) => {
+    const r = {};
+    for (const k of R.REM_TYPES) {
+      r[k] = { on: fd.get('on_' + k) === 'on' };
+      if (k === 'water') {
+        Object.assign(r[k], { every: Number(fd.get('water_every')) || 2, from: fd.get('water_from') || '10:00', to: fd.get('water_to') || '20:00' });
+      } else {
+        r[k].at = fd.get(k + '_at') || R.DEFAULT_REMINDERS[k].at;
+        if (k === 'weight' || k === 'backup') r[k].day = Number(fd.get(k + '_day'));
+      }
+    }
+    data.reminders = r;
+    save();
+    if (!R.pushOn()) { toast(AI.aiReady() && R.pushSupported() ? t('rem_saved_off') : t('saved')); return; }
+    try {
+      await R.syncSettings();
+      toast(t('saved'));
+    } catch (e) {
+      toast('⚠️ ' + aiErr(e));
+    }
+  },
+  ytlimit: async (f, fd) => {
+    const limit = Math.min(600, Math.max(5, Math.round(num(fd.get('limit')) || 60)));
+    try {
+      await R.saveLimit(limit);
+      ui.yt = null;
+      render();
+      toast(t('saved'));
+    } catch (e) {
+      toast('⚠️ ' + aiErr(e));
+    }
   },
   recipe: (f, fd) => {
     const meals = PL.MEALS.filter(m => fd.getAll('meals').includes(m));
@@ -1374,6 +1531,7 @@ const FORMS = {
     const k = Math.round(num(fd.get('kcal')));
     s.kcalGoal = k >= 800 ? k : null;
     commit();
+    R.syncSettings().catch(() => {}); // тон и язык напоминаний и ругани
     toast(t('saved'));
   },
 };
@@ -1383,12 +1541,12 @@ function route() {
   const [name, arg] = (location.hash.replace(/^#\/?/, '') || 'today').split('/');
   return { name, arg };
 }
-const SUBPAGES = ['coach', 'weight', 'habits', 'awards', 'profile', 'settings', 'backup', 'install'];
+const SUBPAGES = ['coach', 'reminders', 'antiyt', 'weight', 'habits', 'awards', 'profile', 'settings', 'backup', 'install'];
 const FOODPAGES = ['food', 'menu', 'recipes', 'shop', 'recipe', 'recipe-edit'];
 const TITLES = {
   menu: 'tab_food', recipes: 'tab_food', shop: 'tab_food', recipe: 'seg_recipes', 'recipe-edit': 'seg_recipes',
   today: 'tab_today', food: 'tab_food', sport: 'tab_sport', sleep: 'tab_sleep', more: 'tab_more',
-  coach: 'coach_title', weight: 'weight_title', habits: 'habits_title', awards: 'awards_title', profile: 'profile_title',
+  coach: 'coach_title', reminders: 'rem_title', antiyt: 'yt_title', weight: 'weight_title', habits: 'habits_title', awards: 'awards_title', profile: 'profile_title',
   settings: 'settings_title', backup: 'backup_title', install: 'install_title', workout: 'workouts_title', onboarding: 'app_name',
 };
 function header(r) {
@@ -1421,7 +1579,7 @@ function updateNav(name) {
 const VIEWS = {
   today: vToday, food: vFood, sport: vSport, sleep: vSleep, more: vMore, weight: vWeight, habits: vHabits,
   awards: vAwards, profile: () => vProfile(false), onboarding: () => vProfile(true), settings: vSettings,
-  backup: vBackup, install: vInstall, workout: vWorkout, coach: vCoach,
+  backup: vBackup, install: vInstall, workout: vWorkout, coach: vCoach, reminders: vReminders, antiyt: vAntiYt,
   menu: vMenu, shop: vShop, recipes: vRecipes, recipe: vRecipe, 'recipe-edit': vRecipeEdit,
 };
 
@@ -1438,6 +1596,7 @@ function render() {
   if (r.name === 'sleep') { const f = view.querySelector('form[data-form="sleep"]'); if (f) updateSleepPreview(f); }
   if (r.name === 'workout' && wo) drawPlayer();
   if (r.name === 'recipes') filterRecipes();
+  if (r.name === 'antiyt') loadYt();
 }
 
 // ================= ЗАПУСК =================
@@ -1466,12 +1625,12 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
 
-window.addEventListener('hashchange', () => { closeSheet(); window.scrollTo(0, 0); render(); });
+window.addEventListener('hashchange', () => { closeSheet(); window.scrollTo(0, 0); ui.yt = null; render(); });
 
 // Если программа была открыта со вчера — переключиться на новый день
 let lastToday = todayKey();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') { R.flushStatus(); return; }
   const tk = todayKey();
   if (tk !== lastToday) {
     if (ui.date === lastToday) ui.date = tk;

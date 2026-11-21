@@ -17,6 +17,19 @@ class_name = "MenuJob"
 tag = "v1"
 new_sqlite_classes = ["MenuJob"]
 
+# «Центр» семьи: телефоны, напоминания, счётчик «анти-YouTube»
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Hub"]
+
+# Раз в минуту сервер проверяет, кому пора отправить напоминание
+[triggers]
+crons = ["* * * * *"]
+
 [vars]
 # Модель Claude
 MODEL = "claude-opus-5-5"

@@ -10,6 +10,7 @@
 //   /coach  — ИИ-тренер: разбор недели или ответ на вопрос
 import Anthropic from '@anthropic-ai/sdk';
 import { DurableObject } from 'cloudflare:workers';
+import { vapidFromEnv } from './push.js';
 
 const SECTIONS = ['veg', 'fruit', 'meat', 'fish', 'dairy', 'eggs', 'grain', 'bakery', 'canned', 'frozen', 'nuts', 'other', 'spice'];
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -332,14 +333,78 @@ function streamed(ctx, work) {
   return new Response(readable, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS } });
 }
 
+// ---------- «Анти-YouTube»: ругань при открытии ----------
+const HOOK_STATIC = {
+  ru: {
+    kind: 'Может, лучше стакан воды и 10 приседаний? Ты справишься 💚',
+    fun: 'Опять котики и блогеры? Давай-ка 10 приседаний — блогеры подождут 😜',
+    strict: 'Отставить ролики! 10 приседаний — шагом марш! 🪖',
+  },
+  en: {
+    kind: 'Maybe a glass of water and 10 squats instead? You’ve got this 💚',
+    fun: 'Cat videos again? 10 squats first — the bloggers can wait 😜',
+    strict: 'Drop the videos, soldier! 10 squats — now! 🪖',
+  },
+};
+
+async function hookText(env, info) {
+  const ru = info.lang === 'ru';
+  const over = info.min >= info.limit;
+  const head = over
+    ? (ru ? `⛔ Лимит превышен: ${info.min} мин из ${info.limit}` : `⛔ Limit exceeded: ${info.min} of ${info.limit} min`)
+    : (ru ? `📵 Заход №${info.opens} за сегодня · ${info.min} мин из ${info.limit}` : `📵 Visit #${info.opens} today · ${info.min} of ${info.limit} min`);
+  const foot = ru ? 'ОК — выйти, Отменить — остаться.' : 'OK — leave, Cancel — stay.';
+  let scold = HOOK_STATIC[info.lang][info.tone];
+  if (env.ANTHROPIC_API_KEY) {
+    const system = `${TONES[info.tone]}
+The user just opened a time-wasting app (YouTube, TikTok, Instagram or similar) on their phone. Today: visit number ${info.opens}, about ${info.min} minutes spent, daily limit ${info.limit} minutes${over ? ' — THE LIMIT IS ALREADY EXCEEDED, be noticeably stricter' : ''}.
+Write 1–2 short sentences in ${LANG_NAME[info.lang]}${info.name ? `, address the user as ${info.name}` : ''}: tease/scold them in your tone and suggest one quick healthy thing instead (squats, a glass of water, a walk, stretching, reading). Never insulting, no body shaming. Plain text, at most one emoji.`;
+    try {
+      const text = await Promise.race([
+        askClaude(env, { system, messages: [{ role: 'user', content: 'I am opening it.' }], effort: 'low', maxTokens: 2000, model: env.PHOTO_MODEL || 'claude-haiku-5-5' }),
+        new Promise((_, no) => setTimeout(() => no(new Error('slow')), 12_000)),
+      ]);
+      if (text) scold = String(text).slice(0, 400);
+    } catch (e) {
+      if (e?.message !== 'slow') console.error('hook ai', e);
+    }
+  }
+  return `${head}\n\n${scold}\n\n${foot}`;
+}
+
+const text = (s, status = 200) => new Response(s, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+const hub = env => env.HUB.get(env.HUB.idFromName('family'));
+const DEV_ROUTES = ['/dev/register', '/dev/update', '/dev/stats', '/dev/test'];
+
+export { Hub } from './hub.js';
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(hub(env).tick()
+      .then(r => { if (r.tried) console.log('reminders', JSON.stringify(r)); })
+      .catch(e => console.error('tick', e)));
+  },
+
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     if (request.method === 'GET' && path === '/') return json({ app: 'zdorovenkiy-ai', ok: true });
+    // Открытый ключ для push (он не секретный)
+    if (request.method === 'GET' && path === '/push/key') {
+      const v = vapidFromEnv(env);
+      return v ? json({ key: v.publicKey }) : json({ error: 'no_vapid' }, 500);
+    }
+    // Ссылка для «Команд»: /h/<токен телефона>/open или /close
+    const hm = /^\/h\/([0-9a-f]{32})\/(open|close)$/.exec(path);
+    if (hm) {
+      const info = await hub(env).hook(hm[1], hm[2]);
+      if (!info) return text('Здаровенький: ссылка устарела. Скопируйте новую в приложении (Ещё → Анти-YouTube).', 404);
+      return text(hm[2] === 'close' ? 'ok' : await hookText(env, info));
+    }
     const handler = ROUTES[path];
     const isJob = path === '/menu-start' || path === '/menu-status';
-    if ((!handler && !isJob) || request.method !== 'POST') return json({ error: 'not_found' }, 404);
+    const isDev = DEV_ROUTES.includes(path);
+    if ((!handler && !isJob && !isDev) || request.method !== 'POST') return json({ error: 'not_found' }, 404);
     if (!env.FAMILY_CODE) return json({ error: 'no_code_set' }, 500);
     if (!sameCode(request.headers.get('X-Family-Code'), env.FAMILY_CODE)) return json({ error: 'bad_code' }, 401);
     let body;
@@ -361,6 +426,20 @@ export default {
       const job = String(body.job || '');
       if (!env.JOBS || !/^[0-9a-f-]{36}$/.test(job)) return json({ error: 'bad_request' }, 400);
       return json(await env.JOBS.get(env.JOBS.idFromName(job)).status());
+    }
+    // Телефоны: регистрация, напоминания, статистика
+    if (isDev) {
+      try {
+        const h = hub(env);
+        if (path === '/dev/register') return json(await h.register(body));
+        if (path === '/dev/update') return json(await h.update(body.id, body.token, body));
+        if (path === '/dev/stats') return json(await h.stats(body.id, body.token));
+        if (path === '/dev/test') return json(await h.testPush(body.id, body.token, body.message));
+      } catch (e) {
+        const code = ['bad_device', 'too_many'].includes(e?.message) ? e.message : 'server';
+        if (code === 'server') console.error(e);
+        return json({ error: code }, code === 'server' ? 500 : 400);
+      }
     }
     return streamed(ctx, () => handler(env, body));
   },

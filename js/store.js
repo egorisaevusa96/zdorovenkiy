@@ -31,6 +31,10 @@ function fresh() {
     shop: { planId: null, checked: {} },
     coach: { msgs: [], lastReview: null }, // переписка с ИИ-тренером
     aiPhotos: 0,
+    device: null,      // этот телефон на сервере: { id, token }
+    push: { on: false }, // напоминания включены?
+    reminders: {},     // настройки напоминаний (пусто = по умолчанию)
+    antiyt: { limit: 60 }, // лимит «анти-YouTube», минут в день
     lastBackup: null,
     createdAt: new Date().toISOString(),
   };
