@@ -1,0 +1,2 @@
+Create ONE small illustration in exactly the same cute glossy 3D cartoon style as the park scene in the "Совет дня" card of the attached reference screenshot: a sunny park path between two round green trees on a grassy hill, with a pair of blue sneakers walking on the path. Wide composition.
+BACKGROUND: the sky area must be perfectly flat solid pure magenta #FF00FF (no sky gradient, no clouds, no sun) so it can be cut out; the grass hill, path and trees stay. Do not use magenta inside the scene. No text.

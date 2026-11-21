@@ -3,3 +3,7 @@ worker/.dev.vars
 worker/.wrangler/
 worker/dist-check/
 .claude/
+
+# картинки-варианты дизайна (большие, лежат только на компьютере)
+design/**/*.png
+design/**/*.log

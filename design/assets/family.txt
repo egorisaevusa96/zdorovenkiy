@@ -1,0 +1,3 @@
+Create ONE illustration in exactly the same cute glossy 3D cartoon style as the happy family in the top-right of the attached reference screenshot: a cheerful family — a bearded dad, a mom with a headband, a boy and a girl — laughing, cheering with raised fists, a small heart nearby. Waist-up group, composition fills the frame width.
+BACKGROUND: perfectly flat solid pure magenta color #FF00FF everywhere behind the characters — no gradient, no scenery, no floor, no shadow, no glow. Do not use magenta inside the characters (the heart should be red, clothes green, blue, pink-coral is fine but not magenta).
+No text.

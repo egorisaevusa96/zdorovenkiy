@@ -31,6 +31,8 @@ const D = {
   glasses: ['стаканов', 'glasses'],
   glass: ['стакан', 'glass'],
   glass_is: ['1 стакан = {v}', '1 glass = {v}'],
+  water_of: ['{n} из {g} стаканов', '{n} of {g} glasses'],
+  photo_food: ['Фото еды', 'Food photo'],
   water_done: ['Норма воды выполнена!', 'Water goal reached!'],
 
   kcal_title: ['Калории', 'Calories'],

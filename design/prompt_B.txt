@@ -1,0 +1,11 @@
+A high-fidelity UI design mockup of ONE iPhone screen (portrait, full screen, flat front view, no hand, no device frame shadows needed) for a family healthy-lifestyle app called "Здаровенький". All interface text in Russian, short and legible.
+The screen is the "Сегодня" (Today) dashboard:
+- header: greeting "Привет, Егор!" , today's date, a streak badge "🔥 12 дней" and points "⭐ 340";
+- a big card for water: "Вода 5 из 8 стаканов" with 8 glass icons (5 filled) and a "+1 стакан" button;
+- a calories card: "Еда 1450 / 2100 ккал" with a ring or progress bar and small rows Завтрак / Обед / Ужин / Перекус, plus a camera button "📷 Фото еды";
+- small tiles in a grid: "Шаги 6 240", "Спорт 30 мин", "Сон 7 ч 20 мин", "Вес 82,4 кг ↓";
+- a habits row with checkmarks: "Без сахара", "Зарядка", "Чтение";
+- a "Совет дня" card with one short tip;
+- bottom tab bar with 5 tabs: Сегодня, Еда, Спорт, Сон, Ещё (with icons), "Сегодня" active.
+Modern, clean, realistic app design, good spacing, consistent icon set, readable typography, professional quality like a top App Store app.
+STYLE B — "playful game": bright and cheerful, saturated colors (orange, sky blue, lime, pink) — each card its own color, big chunky rounded shapes, cute 3D-ish icons, fun badges and confetti accents, like a gamified habit app for the whole family.

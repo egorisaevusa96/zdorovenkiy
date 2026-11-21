@@ -142,30 +142,75 @@ function backupHint() {
   if (days < 7 || !Object.keys(data.days).length) return '';
   return card('💾 ' + t('backup_title'), `<p>${t('backup_remind')}</p><a class="btn primary full" href="#/backup">${t('make_backup')}</a>`, 'warn');
 }
+// Объёмные значки (картинки в img/ui, нарисованы Codex)
+const ic = (name, cls = '') => `<img class="i3 ${cls}" src="img/ui/${name}.webp" alt="" aria-hidden="true">`;
+const MEAL_IC = { breakfast: 'egg', lunch: 'soup', dinner: 'fish', snack: 'apple' };
+function daysWord(n) {
+  if (lang() !== 'ru') return `${n} ${n === 1 ? 'day' : 'days'}`;
+  const a = n % 10, b = n % 100;
+  return `${n} ${a === 1 && b !== 11 ? 'день' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'дня' : 'дней'}`;
+}
+function helloCard() {
+  return `<section class="hello">
+    <div class="hello-t">
+      <div class="hi">${t('hello', { name: esc(data.profile.name) })}</div>
+      <div class="muted">${esc(fmtDate(ui.date, { weekday: 'long', day: 'numeric', month: 'long' }))}</div>
+      <div class="pills">
+        <a class="pill p-fire" href="#/awards">${ic('fire')}${daysWord(P.activeStreak())}</a>
+        <a class="pill p-star" href="#/awards">${ic('star')}${P.totalPoints()}</a>
+      </div>
+    </div>
+    <img class="hello-art" src="img/ui/family.webp" alt="">
+  </section>`;
+}
 function waterCard(d) {
   const g = data.settings.waterGoal, n = d.water;
-  const cups = Array.from({ length: Math.max(g, n) }, (_, i) => `<span class="cup ${i < n ? 'full' : ''}"></span>`).join('');
-  return card('💧 ' + t('water_title'), `
-    <div class="big">${n}<small> / ${g} ${t('glasses')}</small></div>
-    <div class="muted">${U.fmtWaterTotal(n)} · ${t('glass_is', { v: U.glassLabel() })}</div>
+  const cups = Array.from({ length: Math.max(g, n) }, (_, i) => ic(i < n ? 'glass-full' : 'glass-empty', 'cup3')).join('');
+  return `<section class="card c-water">
+    <h2>${t('water_title')} <span>${t('water_of', { n, g })}</span></h2>
     <div class="cups">${cups}</div>
     <div class="row">
-      <button class="btn ghost" data-act="water" data-n="-1" ${n <= 0 ? 'disabled' : ''} aria-label="−1">−1</button>
-      <button class="btn primary grow" data-act="water" data-n="1">+1 ${t('glass')}</button>
+      <button class="wbtn ghost" data-act="water" data-n="-1" ${n <= 0 ? 'disabled' : ''} aria-label="−1">−1</button>
+      <button class="wbtn grow" data-act="water" data-n="1">+1 ${t('glass')}</button>
     </div>
-    ${n >= g ? `<div class="ok">${t('water_done')} 🔥 ${P.waterStreak()}</div>` : ''}`);
+    <div class="sub">${U.fmtWaterTotal(n)} · ${t('glass_is', { v: U.glassLabel() })}${n >= g ? ` · ${t('water_done')} 🔥 ${P.waterStreak()}` : ''}</div>
+  </section>`;
 }
 function kcalCard(d) {
-  const eaten = H.dayEaten(d), burned = H.dayBurned(d), goal = H.kcalGoal(), left = goal - eaten + burned;
-  return card('🍽️ ' + t('kcal_title'), `
-    <div class="kcal3">
-      <div><b>${eaten}</b><small>${t('eaten')}</small></div>
-      <div><b>${burned}</b><small>${t('burned')}</small></div>
-      <div><b class="${left < 0 ? 'bad' : ''}">${Math.abs(left)}</b><small>${left < 0 ? t('over') : t('left')}</small></div>
+  const eaten = H.dayEaten(d), burned = H.dayBurned(d), total = H.kcalGoal() + burned;
+  const p = total ? Math.round((eaten / total) * 100) : 0;
+  const rows = MEALS.map(m => {
+    const sum = d.food.filter(f => f.meal === m).reduce((s, f) => s + (Number(f.kcal) || 0), 0);
+    return `<li>${ic(MEAL_IC[m])}<span class="grow">${t('meal_' + m)}</span><b>${sum} ${t('kcal')}</b></li>`;
+  }).join('');
+  return `<section class="card c-food">
+    <div class="food-h">${ic('salad', 'salad')}
+      <div class="grow"><h2>${t('tab_food')} <span>${eaten} / ${total} ${t('kcal')}</span></h2>
+        <div class="pbar ${eaten > total ? 'bad' : ''}"><i style="width:${Math.min(p, 100)}%"></i><span>${p}%</span></div>
+        ${burned ? `<div class="sub">${t('incl_sport', { n: burned })}</div>` : ''}</div>
     </div>
-    ${bar(eaten / (goal + burned), eaten > goal + burned ? 'bad' : '')}
-    <div class="muted">${t('kcal_goal_is', { n: goal })}</div>
-    <a class="btn ghost full" href="#/food">+ ${t('add_food')}</a>`);
+    <div class="food-b">
+      <a class="meals" href="#/food"><ul>${rows}</ul></a>
+      <button class="photo-btn" data-act="photo">${ic('camera')}<span>${t('photo_food')}</span></button>
+    </div>
+    <input type="file" id="photo-file" accept="image/*" hidden>
+  </section>`;
+}
+function tilesCard(d) {
+  const w = [...data.weights].sort((a, b) => a.date.localeCompare(b.date));
+  const last = w[w.length - 1], prev = w[w.length - 2];
+  const arrow = last && prev ? (last.kg < prev.kg ? ' ↓' : last.kg > prev.kg ? ' ↑' : '') : '';
+  const sleep = d.sleep ? fmtDur(H.sleepMinutes(d.sleep.bed, d.sleep.wake)) : '—';
+  const tile = (cls, attr, icon, label, val) => {
+    const tag = attr.startsWith('href') ? 'a' : 'button';
+    return `<${tag} class="tile ${cls}" ${attr}>${ic(icon)}<span><small>${label}</small><b>${val}</b></span></${tag}>`;
+  };
+  return `<div class="tiles">
+    ${tile('t-steps', 'data-act="steps-edit"', 'sneaker', t('steps_title'), (d.steps || 0).toLocaleString(locale()))}
+    ${tile('t-sport', 'href="#/sport"', 'dumbbell', t('tab_sport'), `${H.daySportMin(d)} ${t('u_min')}`)}
+    ${tile('t-sleep', 'href="#/sleep"', 'moon', t('sleep_title'), sleep)}
+    ${tile('t-weight', 'href="#/weight"', 'scale', t('weight_title'), last ? U.fmtWeight(last.kg) + arrow : '—')}
+  </div>`;
 }
 function stepsCard(d) {
   const g = data.settings.stepsGoal;
@@ -177,44 +222,43 @@ function stepsCard(d) {
     ${bar(d.steps / g)}
     <div class="muted">${t('steps_goal', { n: g.toLocaleString(locale()) })} · ${t('steps_hint')}</div>`);
 }
+function stepsSheet() {
+  const d = peekDay(ui.date), g = data.settings.stepsGoal;
+  return `<form data-form="steps">
+    <h2>👟 ${t('steps_title')}</h2>
+    <input type="number" inputmode="numeric" name="steps" min="0" max="200000" value="${d.steps || ''}" placeholder="0" aria-label="${t('steps_title')}">
+    ${bar(d.steps / g)}
+    <div class="muted">${t('steps_goal', { n: g.toLocaleString(locale()) })} · ${t('steps_hint')}</div>
+    <div class="row"><button type="button" class="btn ghost" data-act="sheet-close">${t('cancel')}</button>
+      <button class="btn primary grow">${t('save')}</button></div>
+  </form>`;
+}
 function habitsCard(d) {
   const hs = data.habits.filter(h => h.active);
   const body = hs.length
     ? hs.map(h => {
       const on = !!d.habits[h.id], st = P.habitStreak(h.id);
-      return `<button class="habit ${on ? 'on' : ''}" data-act="habit" data-id="${h.id}" aria-pressed="${on}">
-        <span class="chk">${on ? '✓' : ''}</span><span class="em">${esc(h.emoji)}</span>
-        <span class="nm">${esc(nm(h.name))}</span>${st ? `<span class="st">🔥${st}</span>` : ''}</button>`;
+      return `<button class="hchip ${on ? 'on' : ''}" data-act="habit" data-id="${h.id}" aria-pressed="${on}">
+        <span class="chk">${on ? '✓' : ''}</span><span class="nm">${esc(h.emoji)} ${esc(nm(h.name))}</span>${st ? `<span class="st">🔥${st}</span>` : ''}</button>`;
     }).join('')
     : `<div class="muted">${t('no_habits')}</div>`;
-  return card('✅ ' + t('habits_title'), body + `<a class="link" href="#/habits">${t('edit_habits')} ›</a>`);
-}
-function sleepMini(d) {
-  let body = d.sleep
-    ? `<div>${t('slept')} <b>${fmtDur(H.sleepMinutes(d.sleep.bed, d.sleep.wake))}</b> ${MOODS[d.sleep.quality - 1] || ''}</div>`
-    : `<div class="muted">${t('sleep_not_logged')}</div>`;
-  if (d.diary?.mood) body += `<div>${t('mood')}: ${MOODS[d.diary.mood - 1]}</div>`;
-  body += `<a class="btn ghost full" href="#/sleep">${d.sleep ? t('open_diary') : t('log_sleep')}</a>`;
-  return card('🌙 ' + t('sleep_title'), body);
+  return `<section class="card c-habits">
+    <div class="card-h"><h2>${ic('calendar', 'h-ic')}${t('habits_title')}</h2><a class="link" href="#/habits">${t('edit_habits')} ›</a></div>
+    <div class="hchips">${body}</div>
+  </section>`;
 }
 function tipCard() {
   const d = new Date();
   const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5);
-  return card('💡 ' + t('tip_title'), `<p>${esc(nm(TIPS[doy % TIPS.length]))}</p>`, 'tip');
+  return `<section class="card c-tip">${ic('bulb', 'bulb')}<div class="tip-t"><span class="tag">${t('tip_title')}</span>
+    <p>${esc(nm(TIPS[doy % TIPS.length]))}</p></div><img class="park" src="img/ui/park.webp" alt=""></section>`;
 }
 function vToday() {
   const d = peekDay(ui.date);
   const isToday = ui.date === todayKey();
   let html = '';
-  if (isToday) {
-    const lv = P.level();
-    html += `<section class="hello">
-      <div><div class="hi">${t('hello', { name: esc(data.profile.name) })}</div>
-      <div class="muted">${esc(fmtDate(ui.date, { weekday: 'long', day: 'numeric', month: 'long' }))}</div></div>
-      <a class="lvl" href="#/awards">⭐ ${lv.level}<small>${t('level_short')}</small></a></section>`;
-    html += installHint() + backupHint();
-  }
-  html += waterCard(d) + kcalCard(d) + menuTodayCard() + habitsCard(d) + stepsCard(d) + sleepMini(d);
+  if (isToday) html += helloCard() + installHint() + backupHint();
+  html += waterCard(d) + kcalCard(d) + tilesCard(d) + habitsCard(d) + menuTodayCard();
   if (isToday) html += coachCard() + tipCard();
   return html;
 }
@@ -223,7 +267,7 @@ function vToday() {
 function vFood() {
   const d = peekDay(ui.date);
   const eaten = H.dayEaten(d), burned = H.dayBurned(d), total = H.kcalGoal() + burned;
-  let html = foodTabs('food') + card('🍽️ ' + t('kcal_title'), `
+  let html = foodTabs('food') + card(ic('salad') + t('kcal_title'), `
     <div class="big">${eaten}<small> / ${total} ${t('kcal')}</small></div>
     ${bar(eaten / total, eaten > total ? 'bad' : '')}
     ${burned ? `<div class="muted">${t('incl_sport', { n: burned })}</div>` : ''}`);
@@ -237,7 +281,7 @@ function vFood() {
       ? `<ul class="list">${items.map(f => `<li><span class="grow">${esc(f.name)}</span><b>${f.kcal}</b>
           <button class="x" data-act="food-del" data-id="${f.id}" aria-label="${t('delete')}">×</button></li>`).join('')}</ul>`
       : `<div class="muted">${t('empty')}</div>`;
-    html += card(`${MEAL_EMOJI[m]} ${t('meal_' + m)} ${sum ? `<span class="muted">· ${sum} ${t('kcal')}</span>` : ''}`, body, '',
+    html += card(`${ic(MEAL_IC[m])}${t('meal_' + m)} ${sum ? `<span class="muted">· ${sum} ${t('kcal')}</span>` : ''}`, body, '',
       `<button class="mini" data-act="food-add" data-meal="${m}" aria-label="${t('add_food')}">+</button>`);
   }
   return html;
@@ -1124,6 +1168,7 @@ const ACTIONS = {
     const next = addDays(ui.date, Number(el.dataset.n));
     if (next <= todayKey()) { ui.date = next; render(); }
   },
+  'steps-edit': () => openSheet(stepsSheet()),
   'water': el => {
     const d = getDay(ui.date);
     const before = d.water;
@@ -1358,6 +1403,7 @@ const ACTIONS = {
 const FORMS = {
   steps: (f, fd) => {
     getDay(ui.date).steps = Math.max(0, Math.round(num(fd.get('steps')) || 0));
+    closeSheet();
     commit();
     toast(t('saved'));
   },
