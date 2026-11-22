@@ -132,6 +132,15 @@ Write "name", item names and "comment" in ${LANG_NAME[lang]}. "name" is a short 
 }
 
 // ---------- /menu ----------
+// Готовка впрок раз в N дней — так же, как prepBlocks в js/planner.js
+function prepBlocks(n) {
+  const chunks = [];
+  for (let s = 0; s < 7; s += n) chunks.push(Array.from({ length: Math.min(n, 7 - s) }, (_, i) => s + i));
+  if (chunks.length > 1 && chunks[chunks.length - 1].length === 1) chunks[chunks.length - 2].push(...chunks.pop());
+  return chunks.flatMap(c => c.length >= 5
+    ? [{ cook: c[0], days: c.filter((_, i) => i % 2 === 0) }, { cook: c[0], days: c.filter((_, i) => i % 2 === 1) }]
+    : [{ cook: c[0], days: c }]);
+}
 const MENU_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -191,13 +200,12 @@ async function menu(env, body) {
   const kcal = int(body.kcalGoal, 1200, 6000, 2000);
   const servings = int(body.servings, 1, 12, 2);
   // Готовка впрок: 3 — дважды (дни 1 и 4), 7 — один раз (два блюда через день)
-  const prepMode = [3, 7].includes(Number(body.prep?.mode)) ? Number(body.prep.mode) : 0;
-  const prepMeals = prepMode ? meals.filter(m => (body.prep.meals || []).includes(m)) : [];
-  const prepRule = !prepMeals.length ? '' : prepMode === 3
-    ? `
-- MEAL PREP for ${prepMeals.join(', ')}: the family cooks twice. For each of these meals use ONE recipe for days 1–3 (cooked on day 1) and ONE other recipe for days 4–7 (cooked on day 4). These dishes must keep well: fridge >= 4 days or freeze = true (stews, soups, cutlets, casseroles, plov…). No salads that wilt, no fried eggs, no smoothies. Different meals use different recipes. Other meals are cooked fresh as usual.`
-    : `
-- MEAL PREP for ${prepMeals.join(', ')}: the family cooks ONCE on day 1. For each of these meals use TWO recipes that alternate: recipe A on days 1, 3, 5, 7 and recipe B on days 2, 4, 6. Both must freeze well (freeze = true): soups, stews, cutlets, meatballs, casseroles, plov… Different meals use different recipes. Other meals are cooked fresh as usual.`;
+  const prepMode = int(body.prep?.mode, 0, 7, 0);
+  const prepMeals = prepMode >= 2 ? meals.filter(m => (body.prep.meals || []).includes(m)) : [];
+  const prepRule = !prepMeals.length ? '' : `
+- MEAL PREP for ${prepMeals.join(', ')}: the family cooks ahead for ${prepMode} days at once. For EACH of these meals follow this schedule, one recipe per line (different lines = different recipes, different meals = different recipes):
+${prepBlocks(prepMode).map(g => `  * days ${g.days.map(i => i + 1).join(', ')}: one recipe, cooked on day ${g.cook + 1}${Math.max(...g.days) - g.cook >= 4 ? ' (must freeze well: freeze = true)' : ''}`).join('\n')}
+  These dishes must keep well: the fridge covers the days after cooking, or freeze = true (stews, soups, cutlets, meatballs, casseroles, plov…). No salads that wilt, no fried eggs, no smoothies. Other meals are cooked fresh as usual.`;
   const person = {
     sex: p.sex === 'f' ? 'female' : 'male',
     age: int(p.age, 10, 110, 35),

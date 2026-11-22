@@ -150,15 +150,21 @@ export function storeInfo(r) {
   const v = STORE[r.id];
   return v ? { fridge: v[0], freeze: v[1] } : null;
 }
-// Группы дней: на 3–4 дня — готовим в 1-й и 4-й день; на неделю — в 1-й день два блюда через день
+// Группы дней: готовим раз в N дней (N = 2…7). Одинокий последний день прибавляем к прошлой готовке.
+// Если одна готовка на 5+ дней — два блюда через день, чтобы не надоело.
+export function prepBlocks(n) {
+  const chunks = [];
+  for (let s = 0; s < 7; s += n) chunks.push(Array.from({ length: Math.min(n, 7 - s) }, (_, i) => s + i));
+  if (chunks.length > 1 && chunks[chunks.length - 1].length === 1) chunks[chunks.length - 2].push(...chunks.pop());
+  return chunks.flatMap(c => c.length >= 5
+    ? [{ cook: c[0], days: c.filter((_, i) => i % 2 === 0) }, { cook: c[0], days: c.filter((_, i) => i % 2 === 1) }]
+    : [{ cook: c[0], days: c }]);
+}
 export function prepSetup(prep, meals) {
-  const mode = Number(prep?.mode) || 0;
+  const mode = Math.min(7, Math.round(Number(prep?.mode) || 0));
   const pm = (prep?.meals || []).filter(m => meals.includes(m));
-  if (!mode || !pm.length) return null;
-  const blocks = mode === 7
-    ? [{ cook: 0, days: [0, 2, 4, 6] }, { cook: 0, days: [1, 3, 5] }]
-    : [{ cook: 0, days: [0, 1, 2] }, { cook: 3, days: [3, 4, 5, 6] }];
-  return { mode, meals: pm, groups: Object.fromEntries(pm.map(m => [m, blocks.map(b => ({ ...b, days: [...b.days] }))])) };
+  if (mode < 2 || !pm.length) return null;
+  return { mode, meals: pm, groups: Object.fromEntries(pm.map(m => [m, prepBlocks(mode)])) };
 }
 export const groupOf = (plan, di, m) => plan?.prep?.groups?.[m]?.find(g => g.days.includes(di)) || null;
 // Хватит ли срока хранения на всю группу (с морозилкой или без)
@@ -213,7 +219,8 @@ export function generatePlan({ servings, meals, prep }) {
     const taken = new Set();
     for (const m of pr.meals) {
       for (const g of pr.groups[m]) {
-        const ok = pool.filter(r => !taken.has(r.id) && keeps(r, g));
+        let ok = pool.filter(r => !taken.has(r.id) && keeps(r, g));
+        if (!ok.length) ok = pool.filter(r => keeps(r, g)); // мало подходящих блюд — можно повторить
         const r = pick(ok, m, goal * MEAL_SHARE[m], used, new Set());
         if (!r) continue;
         taken.add(r.id);

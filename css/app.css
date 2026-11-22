@@ -592,7 +592,7 @@ body.home .top h1 { font-size: 24px; }
 .c-habits .hchip:first-child { padding-left: 6px; }
 
 /* ----- Готовка впрок ----- */
-form:has(input[name="prep"][value="0"]:checked) .prep-meals { display: none; }
+form:has(input[name="prepOn"][value="0"]:checked) .prep-meals { display: none; }
 .prep-meals { margin-top: 4px; }
 .ptag { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
   background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); width: fit-content; }

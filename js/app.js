@@ -380,15 +380,19 @@ function prepTag(di, m) {
 // Поля формы: готовить ли впрок и что именно
 function prepFields(pp) {
   const pr = pp.prep || { mode: 0, meals: ['lunch', 'dinner'] };
+  const on = Number(pr.mode) >= 2, days = on ? Number(pr.mode) : 3;
   return `<div class="lbl">${t('prep_q')}</div>
-    <div class="chips prep-mode">${[0, 3, 7].map(v => `<label class="chip"><input type="radio" name="prep" value="${v}" ${(Number(pr.mode) || 0) === v ? 'checked' : ''}><span>${t('prep_' + v)}</span></label>`).join('')}</div>
-    <div class="prep-meals"><div class="lbl">${t('prep_meals_q')}</div>
+    <div class="chips prep-mode">${[0, 1].map(v => `<label class="chip"><input type="radio" name="prepOn" value="${v}" ${+on === v ? 'checked' : ''}><span>${t(v ? 'prep_on' : 'prep_0')}</span></label>`).join('')}</div>
+    <div class="prep-meals"><div class="lbl">${t('prep_days_q')}</div>
+      <div class="chips">${[2, 3, 4, 5, 7].map(n => `<label class="chip"><input type="radio" name="prepDays" value="${n}" ${n === days ? 'checked' : ''}><span>${n === 7 ? t('prep_week') : daysWord(n)}</span></label>`).join('')}</div>
+      <div class="lbl">${t('prep_meals_q')}</div>
       <div class="chips">${PL.MEALS.map(m => `<label class="chip"><input type="checkbox" name="prepMeals" value="${m}" ${pr.meals.includes(m) ? 'checked' : ''}><span>${MEAL_EMOJI[m]} ${t('meal_' + m)}</span></label>`).join('')}</div>
       <div class="muted">${t('prep_hint')}</div></div>`;
 }
 // Прочитать из формы. null — если впрок выбран, но не отмечено ни одного приёма пищи
 function readPrep(fd, meals) {
-  const mode = [3, 7].includes(Number(fd.get('prep'))) ? Number(fd.get('prep')) : 0;
+  const days = Math.min(7, Math.max(2, Math.round(num(fd.get('prepDays'))) || 3));
+  const mode = fd.get('prepOn') === '1' ? days : 0;
   const picked = PL.MEALS.filter(m => fd.getAll('prepMeals').includes(m));
   if (mode && !picked.some(m => meals.includes(m))) { toast(t('prep_pick')); return null; }
   return { mode, meals: picked };
@@ -504,7 +508,7 @@ function vMenu() {
   const plan = data.plan, goal = H.kcalGoal(), tk = todayKey();
   const short = { day: 'numeric', month: 'short' };
   html += card(ic('clipboard') + t('menu_title'), `
-    <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}${plan.prep ? ' · ' + t('prep_' + plan.prep.mode) : ''}</div>
+    <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}${plan.prep ? ' · 🍱 ' + t('prep_label', { d: daysWord(plan.prep.mode) }) : ''}</div>
     ${plan.ai && plan.note ? `<div class="ai-note">🤖 ${esc(plan.note)}</div>` : ''}
     <a class="btn primary full" href="#/shop">🛒 ${t('shop_open')}</a>
     <div class="row"><button class="btn ghost grow" data-act="menu-new">↻ ${t('menu_new')}</button>
