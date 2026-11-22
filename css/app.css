@@ -601,3 +601,26 @@ form:has(input[name="prepOn"][value="0"]:checked) .prep-meals { display: none; }
 .prep-day + .prep-day { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line, rgba(0,0,0,.12)); }
 .prep-day.now .lbl { color: var(--primary); }
 .prep-day .pl small + small { margin-top: 2px; }
+
+/* ----- Цель по весу ----- */
+.c-goal { flex-direction: row; align-items: center; gap: 12px; color: var(--text); text-decoration: none; }
+.c-goal > .i3 { width: 46px; height: 46px; flex: none; }
+.c-goal .grow { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.c-goal small { color: var(--muted); font-size: 13px; }
+.c-goal .go { font-size: 26px; color: var(--muted); }
+.sh { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.sh.good { background: rgba(34, 165, 89, .15); color: #1a9a4f; }
+.sh.bad { background: rgba(229, 72, 77, .14); color: var(--bad); }
+.goal-res { padding: 12px 14px; border-radius: 16px; font-weight: 600; }
+.goal-res.ok { background: rgba(34, 165, 89, .12); }
+.goal-res.warn { background: rgba(255, 159, 26, .16); }
+.goal-opt { text-align: left; }
+.chip-btn { font: inherit; font-size: 14px; font-weight: 700; padding: 8px 12px; border-radius: 999px; border: 1.5px dashed var(--primary); background: transparent; color: var(--primary); cursor: pointer; }
+.goal-chart .plan { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 5; }
+.goal-chart .now { stroke: var(--line); stroke-width: 1; }
+.goal-chart .flag { font-size: 14px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 3px solid var(--primary); }
+.legend i.lg-plan { border-top: 2px dashed var(--muted); }
+.goal-days small { display: block; color: var(--muted); margin-top: 2px; }
+.goal-link { margin-top: 6px; }

@@ -7,6 +7,7 @@ import * as P from './progress.js';
 import { SPORT_TYPES, WORKOUTS, FOOD_PRESETS, TIPS } from './content.js';
 import { ING } from './recipes.js';
 import * as PL from './planner.js';
+import * as G from './goal.js';
 import * as AI from './ai.js';
 import * as R from './remind.js';
 
@@ -83,6 +84,11 @@ function closeSheet() {
 
 // Сохранить + проверить награды + перерисовать
 function commit() {
+  const before = ui.goalShift;
+  if (G.active() && before != null && !['weight', 'goal', 'profile'].includes(route().name)) {
+    const dlt = G.totalShift() - before;
+    if (Math.abs(dlt) >= 0.05) setTimeout(() => toast(t(dlt < 0 ? 'goal_toast_minus' : 'goal_toast_plus', { n: fmtShift(dlt) })), 2700);
+  }
   save();
   const fresh = P.checkBadges();
   if (fresh.length) save();
@@ -253,12 +259,35 @@ function tipCard() {
   return `<section class="card c-tip">${ic('bulb', 'bulb')}<div class="tip-t"><span class="tag">${t('tip_title')}</span>
     <p>${esc(nm(TIPS[doy % TIPS.length]))}</p></div><img class="park" src="img/ui/park.webp" alt=""></section>`;
 }
+// ----- Цель по весу -----
+function fmtShift(x) {
+  const v = Math.round(Math.abs(x) * 10) / 10;
+  if (Number.isInteger(v)) return daysWord(v);
+  return `${v.toLocaleString(locale())} ${lang() === 'ru' ? 'дня' : 'days'}`;
+}
+const shiftChip = x => `<span class="sh ${x < 0 ? 'good' : 'bad'}">${x < 0 ? '−' : '+'}${fmtShift(x)}</span>`;
+const fmtWk = (dir, kg) => `${dir > 0 ? '−' : '+'}${U.fmtWeight(kg)}`;
+function goalCard() {
+  if (!G.active()) {
+    const b = H.bmi();
+    if (b == null || (b >= 18.5 && b < 25)) return '';
+    return `<a class="card c-goal" href="#/goal">${ic('target')}<span class="grow"><b>${t('goal_home_set')}</b><small>${t('goal_home_set_sub')}</small></span><span class="go">›</span></a>`;
+  }
+  const g = data.goalPlan, s = G.status();
+  if (s.reached) return `<a class="card c-goal" href="#/goal">${ic('trophy')}<span class="grow"><b>${t('goal_done')}</b></span><span class="go">›</span></a>`;
+  const td = s.today;
+  return `<a class="card c-goal" href="#/goal">${ic('target')}<span class="grow">
+    <b>${t('goal_home', { w: esc(U.fmtWeight(g.targetKg)), n: daysWord(s.daysLeft) })}</b>
+    ${bar(s.frac)}
+    <small>${td ? `${t('goal_today')}: ${shiftChip(td.total)}` : t('goal_home_hint')}</small></span><span class="go">›</span></a>`;
+}
+
 function vToday() {
   const d = peekDay(ui.date);
   const isToday = ui.date === todayKey();
   let html = '';
   if (isToday) html += helloCard() + installHint() + backupHint();
-  html += waterCard(d) + kcalCard(d) + tilesCard(d) + habitsCard(d) + menuTodayCard();
+  html += waterCard(d) + kcalCard(d) + (isToday ? goalCard() : '') + tilesCard(d) + habitsCard(d) + menuTodayCard();
   if (isToday) html += coachCard() + tipCard();
   return html;
 }
@@ -891,7 +920,7 @@ function updateSleepPreview(f) {
 // ----- Ещё -----
 function vMore() {
   const items = [
-    ['#/coach', 'robot', 'coach_title'], ['#/reminders', 'bell', 'rem_title'], ['#/antiyt', 'nophone', 'yt_title'], ['#/weight', 'scale', 'weight_title'], ['#/habits', 'calendar', 'habits_title'], ['#/awards', 'trophy', 'awards_title'],
+    ['#/coach', 'robot', 'coach_title'], ['#/reminders', 'bell', 'rem_title'], ['#/antiyt', 'nophone', 'yt_title'], ['#/weight', 'scale', 'weight_title'], ['#/goal', 'target', 'goal_title'], ['#/habits', 'calendar', 'habits_title'], ['#/awards', 'trophy', 'awards_title'],
     ['#/profile', 'person', 'profile_title'], ['#/settings', 'gear', 'settings_title'], ['#/backup', 'cloud', 'backup_title'],
     ['#/install', 'house', 'install_title'],
   ];
@@ -974,7 +1003,8 @@ function vWeight() {
       <input name="w" type="text" inputmode="decimal" placeholder="${U.kgToShow(cur)}" required aria-label="${t('weight')}">
       <span class="unit">${U.weightUnit()}</span>
       <button class="btn primary">${t('add')}</button>
-    </form>`, 'hero h-weight');
+    </form>
+    <a class="btn ghost full goal-link" href="#/goal">${t('goal_open')}</a>`, 'hero h-weight');
   const sorted = data.weights;
   html += card(ic('target') + t('weight_chart'), sorted.length >= 2 ? lineChart(sorted.slice(-60)) : `<div class="muted">${t('weight_chart_empty')}</div>`);
   if (sorted.length) {
@@ -983,6 +1013,120 @@ function vWeight() {
       <button class="x" data-act="weight-del" data-date="${w.date}" aria-label="${t('delete')}">×</button></li>`).join('')}</ul>`);
   }
   return html;
+}
+
+// ----- Цель по весу: экран -----
+function goalChart(g, eta) {
+  const W = 300, Hh = 130, pl = 6, pr = 6;
+  const end = [eta, g.end, todayKey()].sort().pop();
+  const span = Math.max(1, G.daysBetween(g.start, end));
+  const real = [{ date: g.start, kg: g.startKg }, ...data.weights.filter(w => w.date > g.start)];
+  const ys = [g.startKg, g.targetKg, ...real.map(w => w.kg)].map(U.kgToShow);
+  let min = Math.min(...ys), max = Math.max(...ys);
+  const pad = Math.max(1, (max - min) * 0.08); min -= pad; max += pad;
+  const X = key => pl + (G.daysBetween(g.start, key) / span) * (W - pl - pr);
+  const Y = kg => 10 + (1 - (U.kgToShow(kg) - min) / (max - min)) * (Hh - 20);
+  const f = v => v.toFixed(1);
+  let s = `<svg viewBox="0 0 ${W} ${Hh + 18}" class="chart goal-chart" aria-hidden="true">`;
+  s += `<line x1="0" x2="${W}" y1="${f(Y(g.targetKg))}" y2="${f(Y(g.targetKg))}" class="goal"/>`;
+  s += `<line x1="${f(X(g.start))}" y1="${f(Y(g.startKg))}" x2="${f(X(g.end))}" y2="${f(Y(g.targetKg))}" class="plan"/>`;
+  const tx = X(todayKey());
+  s += `<line x1="${f(tx)}" x2="${f(tx)}" y1="4" y2="${Hh - 4}" class="now"/>`;
+  s += `<polyline points="${real.map(w => `${f(X(w.date))},${f(Y(w.kg))}`).join(' ')}" class="ln"/>`;
+  real.forEach(w => { s += `<circle cx="${f(X(w.date))}" cy="${f(Y(w.kg))}" r="3" class="dot"/>`; });
+  s += `<text x="${f(X(eta))}" y="${f(Y(g.targetKg) - 6)}" class="flag" text-anchor="end">🏁</text>`;
+  s += `<text x="${pl}" y="${Hh + 14}" class="l" text-anchor="start">${esc(fmtDate(g.start, { day: 'numeric', month: 'short' }))}</text>`;
+  s += `<text x="${W - pr}" y="${Hh + 14}" class="l" text-anchor="end">${esc(fmtDate(end, { day: 'numeric', month: 'short' }))}</text>`;
+  s += `<text x="${pl}" y="${f(Y(g.startKg) - 6)}" class="v" text-anchor="start">${U.kgToShow(g.startKg)}</text>`;
+  s += `<text x="${W - pr}" y="${f(Y(g.targetKg) + 14)}" class="v" text-anchor="end">${U.kgToShow(g.targetKg)}</text>`;
+  return s + '</svg>';
+}
+function goalOption(kg, days, label) {
+  const c = G.calcPlan(kg, days);
+  return `<button type="button" class="preset goal-opt" data-act="goal-start" data-kg="${kg}" data-days="${days}">
+    <span>${label}</span><small>${t('goal_opt_kcal', { kcal: c.kcal, wk: esc(fmtWk(c.dir, c.weekly)) })}</small></button>`;
+}
+function goalSetup() {
+  const p = data.profile, hr = G.healthyRange(), cur = H.currentWeight(), b = H.bmi(cur);
+  const dr = ui.goalDraft || {};
+  const months = dr.months || 6;
+  const step = Math.round(cur * (cur > hr.max ? 0.9 : 1.1));
+  let html = card(ic('target') + t('goal_healthy'), `
+    <div class="big">${U.kgToShow(hr.min)}–${U.kgToShow(hr.max)}<small> ${U.weightUnit()}</small></div>
+    <div class="muted">${t('goal_healthy_note', { h: esc(U.fmtHeight(p.heightCm)), lo: hr.lo.toLocaleString(locale()), hi: hr.hi, ideal: esc(U.fmtWeight(hr.ideal)) })}</div>
+    <div>${t('goal_now', { w: esc(U.fmtWeight(cur)), b: b ?? '—', c: b ? t(H.bmiCategory(b)) : '' })}</div>
+    ${hr.inRange ? `<div>${t('goal_in_range')}</div>` : ''}`, 'hero h-weight');
+  const c = ui.goalCalc;
+  let res = '';
+  if (c) {
+    const dTxt = d => esc(fmtDate(addDays(todayKey(), d), { day: 'numeric', month: 'long', year: 'numeric' }));
+    res = c.safe
+      ? `<div class="goal-res ok">✅ ${t('goal_ok', { kcal: c.kcal, w: esc(fmtWk(c.dir, c.weekly)) })}</div>
+        <button class="btn primary full big-btn" data-act="goal-start" data-kg="${c.targetKg}" data-days="${c.days}">${t('goal_start')}</button>`
+      : `<div class="goal-res warn">⚠️ ${t('goal_too_fast', { w: esc(fmtWk(c.dir, c.weekly)), max: esc(U.fmtWeight(c.maxW)), min: c.floor })}</div>
+        <div class="presets">
+          ${goalOption(c.targetKg, c.safeDays, t('goal_opt_date', { w: esc(U.fmtWeight(c.targetKg)), d: dTxt(c.safeDays) }))}
+          ${Math.abs(c.stepKg - c.cur) >= 1 ? goalOption(c.stepKg, c.days, t('goal_opt_step', { w: esc(U.fmtWeight(c.stepKg)), n: dr.months || 6 })) : ''}
+        </div>`;
+    res += `<div class="muted">${t('goal_doctor')}</div>`;
+  }
+  html += card(ic('star') + t('goal_set'), `<form data-form="goal">
+    <label class="fld"><span>${t('goal_target_q')}, ${U.weightUnit()}</span><input name="tw" type="text" inputmode="decimal" required value="${U.kgToShow(dr.target ?? hr.suggest)}"></label>
+    <div class="chips">
+      ${hr.inRange ? '' : `<button type="button" class="chip-btn" data-act="goal-fill" data-v="${U.kgToShow(hr.suggest)}">${t('goal_chip_healthy', { w: esc(U.fmtWeight(hr.suggest)) })}</button>`}
+      ${cur > hr.max ? `<button type="button" class="chip-btn" data-act="goal-fill" data-v="${U.kgToShow(step)}">${t('goal_chip_step', { w: esc(U.fmtWeight(step)) })}</button>` : ''}
+    </div>
+    <div class="lbl">${t('goal_when_q')}</div>
+    <div class="chips">${[3, 6, 9, 12].map(m => radio('months', m, t('goal_m', { n: m }), m === months)).join('')}</div>
+    <button class="btn ${c ? 'ghost' : 'primary'} full">${t('goal_calc')}</button>
+  </form>${res}
+  ${G.active() ? `<button class="btn ghost full" data-act="goal-edit-cancel">${t('cancel')}</button>` : ''}`);
+  return html;
+}
+function goalProgress() {
+  const g = data.goalPlan, s = G.status();
+  const long = { day: 'numeric', month: 'long', year: 'numeric' };
+  if (s.reached) {
+    return card(ic('trophy') + t('goal_done'), `<p>${t('goal_done_text', { w: esc(U.fmtWeight(g.targetKg)) })}</p>
+      <button class="btn primary full" data-act="goal-edit">${t('goal_new')}</button>
+      <button class="btn ghost full" data-act="goal-del">${t('goal_del')}</button>`, 'hero h-weight')
+      + card(ic('target') + t('weight_chart'), goalChart(g, todayKey()));
+  }
+  const shiftTxt = s.shift < -0.05 ? t('goal_ahead', { n: fmtShift(s.shift) }) : s.shift > 0.05 ? t('goal_behind', { n: fmtShift(s.shift) }) : t('goal_on_plan');
+  const wDiff = g.dir * (s.planW - s.cur);
+  let html = card(ic('target') + t('goal_title'), `
+    <div class="big">${U.kgToShow(s.cur)} → ${U.kgToShow(g.targetKg)}<small> ${U.weightUnit()}</small></div>
+    ${bar(s.frac)}
+    <div>${t('goal_eta', { d: esc(fmtDate(s.eta, long)), n: daysWord(s.daysLeft) })}</div>
+    <div><b>${shiftTxt}</b></div>
+    <div class="muted">${t('goal_kcal_line', { n: H.kcalGoal(), w: esc(fmtWk(g.dir, s.weekly)) })}</div>
+    ${s.weighed && Math.abs(wDiff) >= 0.3 ? `<div class="muted">${t(wDiff > 0 ? 'goal_w_ahead' : 'goal_w_behind', { w: esc(U.fmtWeight(Math.abs(wDiff))) })}</div>` : ''}`, 'hero h-weight');
+  html += card(ic('stopwatch') + t('goal_today'), s.today
+    ? `<ul class="list">${Math.abs(s.today.sport) >= 0.05 ? `<li><span class="grow">🏃 ${t('goal_sport')}</span>${shiftChip(s.today.sport)}</li>` : ''}
+        ${Math.abs(s.today.food) >= 0.05 ? `<li><span class="grow">🍽 ${t('goal_food')}</span>${shiftChip(s.today.food)}</li>` : ''}</ul>`
+    : `<div class="muted">${t('goal_home_hint')}</div>`);
+  html += card(ic('target') + t('weight_chart'), `${goalChart(g, s.eta)}
+    <div class="legend"><span><i class="lg-real"></i>${t('goal_lg_real')}</span><span><i class="lg-plan"></i>${t('goal_lg_plan')}</span></div>
+    <form data-form="weight" class="row">
+      <input name="w" type="text" inputmode="decimal" placeholder="${U.kgToShow(s.cur)}" required aria-label="${t('weight')}">
+      <span class="unit">${U.weightUnit()}</span>
+      <button class="btn primary">${t('add')}</button>
+    </form>`);
+  const tk = todayKey(), rows = [];
+  for (let k = addDays(tk, -1); k >= g.start && rows.length < 10; k = addDays(k, -1)) {
+    const x = G.dayShift(k);
+    if (x) rows.push(`<li><span class="grow">${esc(fmtDate(k))}<small>${Math.abs(x.sport) >= 0.05 ? `🏃 ${shiftChip(x.sport)} ` : ''}${Math.abs(x.food) >= 0.05 ? `🍽 ${shiftChip(x.food)}` : ''}</small></span>${shiftChip(x.total)}</li>`);
+    if (G.daysBetween(k, tk) > 60) break;
+  }
+  html += card(ic('calendar') + t('goal_days_title'), rows.length ? `<ul class="list goal-days">${rows.join('')}</ul>` : `<div class="muted">${t('goal_days_empty')}</div>`);
+  html += card(ic('bulb') + t('goal_how'), `<p class="muted">${t(g.dir > 0 ? 'goal_how_text' : 'goal_how_gain', { d: g.daily })}</p>
+    <div class="row"><button class="btn ghost grow" data-act="goal-edit">${t('goal_edit')}</button>
+    <button class="btn danger" data-act="goal-del" aria-label="${t('goal_del')}">🗑</button></div>`);
+  return html;
+}
+function vGoal() {
+  if (!data.goalPlan || ui.goalEdit) return goalSetup();
+  return goalProgress();
 }
 
 // ----- Привычки -----
@@ -1072,6 +1216,7 @@ function vSettings() {
     <label class="fld"><span>${t('water_goal')}</span><input name="water" type="number" inputmode="numeric" min="1" max="30" required value="${s.waterGoal}"></label>
     <label class="fld"><span>${t('steps_goal_lbl')}</span><input name="steps" type="number" inputmode="numeric" min="500" max="100000" step="500" required value="${s.stepsGoal}"></label>
     <label class="fld"><span>${t('kcal_goal_lbl')}</span><input name="kcal" type="number" inputmode="numeric" min="800" max="6000" value="${s.kcalGoal || ''}" placeholder="${t('kcal_auto', { n: H.autoKcalGoal() })}"></label>
+    ${G.active() && !H.goalReached() ? `<div class="muted">${t('kcal_from_goal', { n: H.kcalGoal() })}</div>` : ''}
     <button class="btn primary full">${t('save')}</button>
   </form>
   <form data-form="aiset" class="card" id="ai-settings">
@@ -1415,6 +1560,25 @@ const ACTIONS = {
     data.plan = null;
     commit();
   },
+  'goal-fill': el => { el.closest('form').elements.tw.value = el.dataset.v; },
+  'goal-start': el => {
+    const kg = Number(el.dataset.kg), days = Number(el.dataset.days);
+    const g = G.startPlan(kg, days);
+    data.profile.goal = g.dir > 0 ? 'lose' : 'gain';
+    data.profile.targetKg = kg;
+    ui.goalEdit = false; ui.goalCalc = null; ui.goalDraft = null;
+    commit();
+    window.scrollTo(0, 0);
+    toast(t('goal_started'));
+  },
+  'goal-edit': () => { ui.goalEdit = true; ui.goalCalc = null; render(); window.scrollTo(0, 0); },
+  'goal-edit-cancel': () => { ui.goalEdit = false; ui.goalCalc = null; render(); },
+  'goal-del': () => {
+    if (!confirm(t('goal_del_q'))) return;
+    data.goalPlan = null;
+    ui.goalEdit = false; ui.goalCalc = null;
+    commit();
+  },
   'plan-swap': el => openSheet(swapSheet(Number(el.dataset.d), el.dataset.m)),
   'plan-random': el => {
     const di = Number(el.dataset.d), m = el.dataset.m;
@@ -1519,6 +1683,16 @@ const FORMS = {
     upsertWeight(todayKey(), kg);
     commit();
     toast(t('saved'));
+  },
+  goal: (f, fd) => {
+    const kg = U.showToKg(num(fd.get('tw')));
+    if (!(kg > 30 && kg < 300)) { toast(t('bad_weight')); return; }
+    if (Math.abs(kg - H.currentWeight()) < 1) { toast(t('goal_too_close')); return; }
+    const months = Number(fd.get('months')) || 6;
+    ui.goalDraft = { target: kg, months };
+    ui.goalCalc = G.calcPlan(kg, Math.round(months * 30.44));
+    render();
+    setTimeout(() => view.querySelector('.goal-res')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   },
   habit: (f, fd) => {
     const name = String(fd.get('name')).trim();
@@ -1666,12 +1840,12 @@ function route() {
   const [name, arg] = (location.hash.replace(/^#\/?/, '') || 'today').split('/');
   return { name, arg };
 }
-const SUBPAGES = ['coach', 'reminders', 'antiyt', 'weight', 'habits', 'awards', 'profile', 'settings', 'backup', 'install'];
+const SUBPAGES = ['coach', 'reminders', 'antiyt', 'weight', 'goal', 'habits', 'awards', 'profile', 'settings', 'backup', 'install'];
 const FOODPAGES = ['food', 'menu', 'recipes', 'shop', 'recipe', 'recipe-edit'];
 const TITLES = {
   menu: 'tab_food', recipes: 'tab_food', shop: 'tab_food', recipe: 'seg_recipes', 'recipe-edit': 'seg_recipes',
   today: 'tab_today', food: 'tab_food', sport: 'tab_sport', sleep: 'tab_sleep', more: 'tab_more',
-  coach: 'coach_title', reminders: 'rem_title', antiyt: 'yt_title', weight: 'weight_title', habits: 'habits_title', awards: 'awards_title', profile: 'profile_title',
+  coach: 'coach_title', reminders: 'rem_title', antiyt: 'yt_title', weight: 'weight_title', goal: 'goal_title', habits: 'habits_title', awards: 'awards_title', profile: 'profile_title',
   settings: 'settings_title', backup: 'backup_title', install: 'install_title', workout: 'workouts_title', onboarding: 'app_name',
 };
 function header(r) {
@@ -1706,7 +1880,7 @@ function updateNav(name) {
 }
 
 const VIEWS = {
-  today: vToday, food: vFood, sport: vSport, sleep: vSleep, more: vMore, weight: vWeight, habits: vHabits,
+  today: vToday, food: vFood, sport: vSport, sleep: vSleep, more: vMore, weight: vWeight, goal: vGoal, habits: vHabits,
   awards: vAwards, profile: () => vProfile(false), onboarding: () => vProfile(true), settings: vSettings,
   backup: vBackup, install: vInstall, workout: vWorkout, coach: vCoach, reminders: vReminders, antiyt: vAntiYt,
   menu: vMenu, shop: vShop, recipes: vRecipes, recipe: vRecipe, 'recipe-edit': vRecipeEdit,
@@ -1722,6 +1896,7 @@ function render() {
   header(r);
   updateNav(r.name);
   view.innerHTML = (VIEWS[r.name] || vToday)(r.arg);
+  ui.goalShift = G.active() ? G.totalShift() : null;
   if (r.name === 'sleep') { const f = view.querySelector('form[data-form="sleep"]'); if (f) updateSleepPreview(f); }
   if (r.name === 'workout' && wo) drawPlayer();
   if (r.name === 'recipes') filterRecipes();
