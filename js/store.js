@@ -31,6 +31,7 @@ function fresh() {
     shop: { planId: null, checked: {} },
     coach: { msgs: [], lastReview: null }, // переписка с ИИ-тренером
     aiPhotos: 0,
+    aiJob: null,       // меню от ИИ, которое сейчас делает сервер: { id, at, servings, meals, prep }
     device: null,      // этот телефон на сервере: { id, token }
     push: { on: false }, // напоминания включены?
     reminders: {},     // настройки напоминаний (пусто = по умолчанию)
@@ -81,6 +82,17 @@ export function save() {
 export function replaceData(newData) {
   data = migrate(newData);
   save();
+}
+
+// Копия данных для файла резервной копии: без семейного пароля и без «пропуска» этого телефона на сервер.
+// Так файл можно хранить в iCloud и не бояться, что по нему кто-то получит доступ к ИИ.
+export function exportData() {
+  const copy = JSON.parse(JSON.stringify(data));
+  copy.settings.aiCode = '';
+  copy.device = null;
+  copy.push = { on: false };
+  copy.aiJob = null;
+  return copy;
 }
 
 export function wipeData() {

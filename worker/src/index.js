@@ -375,7 +375,7 @@ async function hookText(env, info) {
     : (ru ? `📵 Заход №${info.opens} за сегодня · ${info.min} мин из ${info.limit}` : `📵 Visit #${info.opens} today · ${info.min} of ${info.limit} min`);
   const foot = ru ? 'ОК — выйти, Отменить — остаться.' : 'OK — leave, Cancel — stay.';
   let scold = HOOK_STATIC[info.lang][info.tone];
-  if (env.ANTHROPIC_API_KEY) {
+  if (env.ANTHROPIC_API_KEY && info.ai) {
     const system = `${TONES[info.tone]}
 The user just opened a time-wasting app (YouTube, TikTok, Instagram or similar) on their phone. Today: visit number ${info.opens}, about ${info.min} minutes spent, daily limit ${info.limit} minutes${over ? ' — THE LIMIT IS ALREADY EXCEEDED, be noticeably stricter' : ''}.
 Write 1–2 short sentences in ${LANG_NAME[info.lang]}${info.name ? `, address the user as ${info.name}` : ''}: tease/scold them in your tone and suggest one quick healthy thing instead (squats, a glass of water, a walk, stretching, reading). Never insulting, no body shaming. Plain text, at most one emoji.`;
@@ -395,6 +395,8 @@ Write 1–2 short sentences in ${LANG_NAME[info.lang]}${info.name ? `, address t
 const text = (s, status = 200) => new Response(s, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
 const hub = env => env.HUB.get(env.HUB.idFromName('family'));
 const DEV_ROUTES = ['/dev/register', '/dev/update', '/dev/stats', '/dev/test'];
+// Запросы, которые тратят деньги на ИИ, — у каждого вида свой дневной лимит (см. spend в hub.js)
+const AI_KIND = { '/photo': 'photo', '/coach': 'coach', '/menu': 'menu', '/menu-start': 'menu' };
 
 export { Hub } from './hub.js';
 
@@ -426,7 +428,16 @@ export default {
     const isDev = DEV_ROUTES.includes(path);
     if ((!handler && !isJob && !isDev) || request.method !== 'POST') return json({ error: 'not_found' }, 404);
     if (!env.FAMILY_CODE) return json({ error: 'no_code_set' }, 500);
-    if (!sameCode(request.headers.get('X-Family-Code'), env.FAMILY_CODE)) return json({ error: 'bad_code' }, 401);
+    const good = sameCode(request.headers.get('X-Family-Code'), env.FAMILY_CODE);
+    // Защита от подбора пароля: после 10 неверных попыток с одного адреса — пауза 15 минут
+    let open = true;
+    try {
+      open = await hub(env).gate(request.headers.get('CF-Connecting-IP') || '?', good);
+    } catch (e) {
+      console.error('gate', e);
+    }
+    if (!open) return json({ error: 'locked' }, 429);
+    if (!good) return json({ error: 'bad_code' }, 401);
     let body;
     try {
       const raw = await request.text();
@@ -434,6 +445,12 @@ export default {
       body = JSON.parse(raw || '{}');
     } catch {
       return json({ error: 'bad_request' }, 400);
+    }
+    // Дневной лимит запросов к ИИ — чтобы ошибка в программе или чужой человек с паролем не потратили много денег
+    if (AI_KIND[path]) {
+      let can = true;
+      try { can = await hub(env).spend(AI_KIND[path]); } catch (e) { console.error('spend', e); }
+      if (!can) return json({ error: 'limit' }, 429);
     }
     // Меню — через «ящик для заданий»: сразу отдаём номер задания, телефон потом спрашивает «готово?»
     if (path === '/menu-start') {

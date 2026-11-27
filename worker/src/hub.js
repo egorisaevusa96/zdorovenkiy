@@ -5,6 +5,13 @@ import { sendPush, vapidFromEnv } from './push.js';
 
 const MAX_DEVICES = 20;
 const DEF_TZ = 'America/New_York';
+const DAY_MS = 864e5;
+
+// Защита кошелька: сколько запросов к ИИ можно за сутки на всю семью (меняется в wrangler.toml: LIMIT_MENU и т. д.)
+const DEF_LIMITS = { menu: 20, photo: 150, coach: 150, hook: 40 };
+// Защита от подбора семейного пароля: столько неверных попыток с одного адреса — и пауза
+const MAX_FAILS = 10;
+const FAIL_WINDOW_MS = 15 * 60_000;
 
 const s = (v, max) => String(v ?? '').trim().slice(0, max);
 const clampInt = (v, lo, hi, def) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def; };
@@ -76,6 +83,35 @@ function markPassed(dev) {
 }
 
 export class Hub extends DurableObject {
+  #fails = new Map(); // адрес → { n, first }: неверные пароли за последние 15 минут (только в памяти)
+
+  // Проверка перед каждым запросом. false — с этого адреса слишком много неверных паролей, ждите.
+  // Пока пауза не кончилась, не пускаем даже с верным паролем — иначе подбор можно было бы продолжать.
+  gate(ip, good) {
+    const key = s(ip, 60) || '?', now = Date.now();
+    let f = this.#fails.get(key);
+    if (f && now - f.first > FAIL_WINDOW_MS) { this.#fails.delete(key); f = null; }
+    if (f && f.n >= MAX_FAILS) return false;
+    if (good) return true;
+    if (this.#fails.size > 5000) this.#fails.clear();
+    this.#fails.set(key, { n: (f?.n || 0) + 1, first: f?.first || now });
+    return true;
+  }
+
+  // Счётчик запросов к ИИ за сутки. true — можно, false — дневной лимит исчерпан.
+  async spend(kind) {
+    if (!(kind in DEF_LIMITS)) return true;
+    const raw = this.env['LIMIT_' + kind.toUpperCase()];
+    const lim = raw === undefined || raw === '' ? DEF_LIMITS[kind] : clampInt(raw, 0, 100000, DEF_LIMITS[kind]);
+    const day = localNow(DEF_TZ).date;
+    let u = await this.ctx.storage.get('ai-usage');
+    if (!u || u.day !== day) u = { day, n: {} };
+    if ((u.n[kind] || 0) >= lim) return false;
+    u.n[kind] = (u.n[kind] || 0) + 1;
+    await this.ctx.storage.put('ai-usage', u);
+    return true;
+  }
+
   async #get(id) { return id ? this.ctx.storage.get('dev:' + id) : null; }
   async #put(dev) { await this.ctx.storage.put('dev:' + dev.id, dev); }
   async #auth(id, token) {
@@ -87,9 +123,20 @@ export class Hub extends DurableObject {
   // Новый телефон (или повторная регистрация того же)
   async register(info) {
     let dev = await this.#get(s(info.id, 40));
+    // Номер телефона без его секретного токена — токен не отдаём, заводим новый телефон
+    if (dev && (!info.token || dev.token !== s(info.token, 64))) dev = null;
     if (!dev) {
       const all = await this.ctx.storage.list({ prefix: 'dev:' });
-      if (all.size >= MAX_DEVICES) throw new Error('too_many');
+      if (all.size >= MAX_DEVICES) {
+        // Места нет — убираем самый давно молчащий телефон: без напоминаний и неделю не выходил на связь
+        // (так выглядят старые записи после переустановки), либо молчит больше двух месяцев.
+        const now = Date.now(), last = d => d.seen || d.created || 0;
+        const old = [...all.values()]
+          .filter(d => now - last(d) > (d.sub ? 60 : 7) * DAY_MS)
+          .sort((a, b) => last(a) - last(b))[0];
+        if (!old) throw new Error('too_many');
+        await this.ctx.storage.delete(['dev:' + old.id, 'tok:' + old.token]);
+      }
       dev = { id: randHex(8), token: randHex(16), created: Date.now(), reminders: [], sent: {}, usage: {}, sub: null, status: null, limit: 60, openAt: null };
       await this.ctx.storage.put('tok:' + dev.token, dev.id);
     }
@@ -98,6 +145,7 @@ export class Hub extends DurableObject {
     if (info.lang || !dev.lang) dev.lang = info.lang === 'en' ? 'en' : 'ru';
     if (['kind', 'fun', 'strict'].includes(info.tone)) dev.tone = info.tone;
     else if (!dev.tone) dev.tone = 'fun';
+    dev.seen = Date.now();
     await this.#put(dev);
     return { id: dev.id, token: dev.token };
   }
@@ -112,6 +160,7 @@ export class Hub extends DurableObject {
     if (p.status !== undefined) dev.status = cleanStatus(p.status);
     if (p.sub !== undefined) dev.sub = cleanSub(p.sub);
     if (p.reminders !== undefined) { dev.reminders = cleanReminders(p.reminders); markPassed(dev); }
+    dev.seen = Date.now();
     await this.#put(dev);
     return { ok: true, push: !!dev.sub, reminders: dev.reminders.length };
   }
@@ -159,8 +208,12 @@ export class Hub extends DurableObject {
     // Храним только 14 дней
     const keep = Object.keys(dev.usage).sort().slice(-14);
     dev.usage = Object.fromEntries(keep.map(k => [k, dev.usage[k]]));
+    dev.seen = now;
     await this.#put(dev);
-    return { lang: dev.lang, tone: dev.tone, name: dev.name, opens: u.opens, min: Math.round(u.min), limit: dev.limit };
+    // ИИ придумывает «ругань» только для первых 20 заходов телефона за день и пока не исчерпан общий дневной лимит —
+    // дальше идут готовые фразы (ссылка для «Команд» может срабатывать очень часто)
+    const ai = event !== 'close' && u.opens <= 20 && await this.spend('hook');
+    return { lang: dev.lang, tone: dev.tone, name: dev.name, opens: u.opens, min: Math.round(u.min), limit: dev.limit, ai };
   }
 
   // Раз в минуту (по расписанию Cloudflare): разослать напоминания, у которых подошло время

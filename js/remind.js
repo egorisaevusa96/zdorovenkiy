@@ -72,17 +72,17 @@ const devInfo = () => ({ name: data.profile?.name || '', tz: tz(), lang: data.se
 
 export async function ensureDevice() {
   if (data.device?.id && data.device?.token) return data.device;
-  const res = await aiCall('dev/register', { id: data.device?.id, ...devInfo() });
+  const res = await aiCall('dev/register', { id: data.device?.id, token: data.device?.token, ...devInfo() });
   data.device = { id: res.id, token: res.token };
   save();
   return data.device;
 }
 
-export async function devCall(path, body = {}) {
+export async function devCall(path, body = {}, opts = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const dev = await ensureDevice();
     try {
-      return await aiCall(path, { id: dev.id, token: dev.token, ...body });
+      return await aiCall(path, { id: dev.id, token: dev.token, ...body }, opts);
     } catch (e) {
       // Сервер забыл телефон (например, после переустановки) — регистрируемся заново
       if (e.code === 'bad_device' && attempt === 0) { data.device = null; save(); continue; }
@@ -145,6 +145,31 @@ export async function syncSettings() {
   await devCall('dev/update', { ...devInfo(), ...(pushOn() ? { reminders: buildReminders(), status: todayStatus() } : {}) });
 }
 
+// Проверка при запуске: правда ли напоминания ещё работают. iPhone иногда сам отменяет подписку
+// (переустановка, новый телефон, долго не открывали) — тогда подписываемся заново или честно показываем «выключены».
+// Ответ: 'skip' — проверять нечего, 'ok' — всё хорошо, 'fixed' — починили, 'lost' — отключились, включите заново.
+export async function verifyPush() {
+  if (!pushOn() || !aiReady()) return 'skip';
+  const lost = () => { data.push = { on: false, lost: true }; save(); return 'lost'; };
+  if (!pushSupported()) return lost();
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    if (Notification.permission !== 'granted') return lost();
+    try {
+      const key = (await fetch(`${normUrl(data.settings.aiUrl)}/push/key`).then(r => r.json())).key;
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+    } catch {
+      return navigator.onLine ? lost() : 'skip';
+    }
+    await fullUpdate({ sub: sub.toJSON() });
+    return 'fixed';
+  }
+  const res = await devCall('dev/update', { status: todayStatus(), tz: tz() });
+  if (res && res.push === false) { await fullUpdate({ sub: sub.toJSON() }); return 'fixed'; }
+  return 'ok';
+}
+
 // Что-то записали — через пару секунд сообщить серверу (одним запросом, а не на каждое нажатие)
 let statusTimer = null;
 export function statusChanged() {
@@ -156,7 +181,7 @@ export function flushStatus() {
   if (!statusTimer || !pushOn()) return;
   clearTimeout(statusTimer);
   statusTimer = null;
-  devCall('dev/update', { status: todayStatus(), tz: tz() }).catch(() => { /* в следующий раз */ });
+  devCall('dev/update', { status: todayStatus(), tz: tz() }, { keepalive: true }).catch(() => { /* в следующий раз */ });
 }
 
 // ---- Анти-YouTube ----

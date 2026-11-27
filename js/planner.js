@@ -77,6 +77,7 @@ export function planFromAi(res, { servings, meals, prep }) {
 }
 
 // ---------- Аллергии и «не ем» из профиля ----------
+// Слова-категории: «молочное» убирает всё молочное. Русские слова — начало слова, английские — слово целиком.
 const TAG_WORDS = {
   fish: ['рыб', 'fish', 'лосос', 'salmon', 'тунец', 'тунц', 'tuna', 'треск', 'cod'],
   seafood: ['морепрод', 'креветк', 'shrimp', 'seafood', 'краб', 'shellfish'],
@@ -86,32 +87,69 @@ const TAG_WORDS = {
   egg: ['яйц', 'яиц', 'egg'],
   meat: ['мяс', 'meat'],
   pork: ['свинин', 'pork'],
+  beef: ['говяд', 'говяж', 'телят', 'beef', 'veal'],
+  poultry: ['птиц', 'poultry'],
   mushrooms: ['гриб', 'mushroom'],
-  honey: ['мёд', 'мед', 'honey'],
-  sugar: ['сахар', 'sugar', 'сладк'],
+  honey: ['мед', 'honey'],
+  sugar: ['сахар', 'sugar', 'сладкое', 'сладкого', 'сладост', 'sweets'],
+  soy: ['соя', 'сои', 'сою', 'соев', 'soy', 'soya', 'тофу', 'tofu'],
+  citrus: ['цитрус', 'citrus'],
+  legumes: ['бобов', 'legume', 'pulses'],
+  tomato: ['помидор', 'томат', 'tomato'],
 };
-const STOP = new Set(['без', 'нет', 'или', 'ем', 'люблю', 'не', 'and', 'not', 'free', 'without', 'don’t', "don't", 'eat', 'dislike', 'like', 'аллергия', 'allergy']);
+const STOP = new Set(['без', 'нет', 'или', 'ем', 'люблю', 'не', 'and', 'not', 'free', 'without', 'don’t', "don't", 'eat', 'dislike', 'like',
+  'аллергия', 'аллергии', 'allergy', 'allergic', 'the', 'очень', 'много', 'мало', 'диета', 'diet', 'питание', 'кроме', 'есть', 'ничего',
+  'none', 'все', 'для', 'при', 'any', 'low', 'high', 'нельзя', 'можно', 'только']);
 
+const yo = s => String(s || '').toLowerCase().replace(/ё/g, 'е');
+const splitWords = text => yo(text).split(/[^a-zа-я0-9’']+/).filter(Boolean);
 function words(text) {
-  return String(text || '').toLowerCase().replace(/ё/g, 'е')
-    .split(/[\s,;.\/()+]+/).filter(w => w.length >= 3 && !STOP.has(w));
+  return splitWords(text).filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
 }
-const yo = s => s.toLowerCase().replace(/ё/g, 'е');
+const isLatin = w => /^[a-z’']+$/.test(w);
+// «tomatoes» → «tomato», «nuts» → «nut»
+const enBase = w => (w.length > 4 && w.endsWith('es') ? w.slice(0, -2) : w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+// Подходит ли слово человека к слову-категории
+function hitsTag(w, tw) {
+  if (isLatin(tw)) return w === tw || enBase(w) === tw || enBase(w) === enBase(tw);
+  return w.startsWith(tw) && w.length - tw.length <= 4;
+}
+const tagsOfWord = w => Object.entries(TAG_WORDS).filter(([, list]) => list.some(tw => hitsTag(w, yo(tw)))).map(([tag]) => tag);
+// Основа слова: «курица» → «кури», «кинза» → «кинз», «рис» → «рис»
+const ruStem = w => (w.length <= 3 ? w : w.length <= 5 ? w.slice(0, -1) : w.slice(0, -2));
+// Слово человека совпало со словом из названия продукта?
+function wordHits(w, nameWords) {
+  if (isLatin(w)) { const b = enBase(w); return nameWords.some(n => isLatin(n) && enBase(n) === b); }
+  const st = ruStem(w);
+  return nameWords.some(n => !isLatin(n) && n.startsWith(st));
+}
+const VEG = /^(вегетар|vegetar)/, VEGAN = /^(веган|vegan)/;
 
 export function restrictions() {
   const p = data.profile || {};
-  const ws = words([p.allergies, p.dislikes, p.diet].join(' '));
+  const ws = [...new Set(words([p.allergies, p.dislikes, p.diet].join(' ')))];
   const tags = new Set();
+  const tagged = new Set(); // слова, которые поняли как категорию
   for (const w of ws) {
-    for (const [tag, list] of Object.entries(TAG_WORDS)) {
-      if (list.some(tw => w.startsWith(yo(tw)) || yo(tw).startsWith(w.slice(0, 4)))) tags.add(tag);
-    }
-    if (/^вегетар|^vegetar/.test(w)) ['meat', 'pork', 'fish', 'seafood'].forEach(x => tags.add(x));
-    if (/^веган|^vegan/.test(w)) ['meat', 'pork', 'fish', 'seafood', 'dairy', 'egg', 'honey'].forEach(x => tags.add(x));
+    const tg = tagsOfWord(w);
+    if (tg.length) tagged.add(w);
+    tg.forEach(x => tags.add(x));
+    if (VEG.test(w)) { tagged.add(w); ['meat', 'pork', 'beef', 'poultry', 'fish', 'seafood'].forEach(x => tags.add(x)); }
+    if (VEGAN.test(w)) { tagged.add(w); ['meat', 'pork', 'beef', 'poultry', 'fish', 'seafood', 'dairy', 'egg', 'honey'].forEach(x => tags.add(x)); }
   }
   // вегетарианцы и веганы — не исключаем по самому слову
-  const plain = ws.filter(w => !/^(вегетар|vegetar|веган|vegan)/.test(w));
-  return { tags, words: plain };
+  const plain = ws.filter(w => !VEG.test(w) && !VEGAN.test(w));
+  return { tags, words: plain, tagged };
+}
+
+// Названия и метки одного продукта рецепта
+function ingInfo(i) {
+  if (!i.custom) {
+    const d = ING[i.k];
+    return { name: nm(d?.name), nameWords: splitWords(`${d?.name.ru} ${d?.name.en}`), tags: d?.tags || [] };
+  }
+  const nameWords = splitWords(i.name);
+  return { name: i.name, nameWords, tags: [...new Set(nameWords.flatMap(tagsOfWord))] };
 }
 
 // Какие продукты рецепта не подходят (список названий)
@@ -119,17 +157,33 @@ export function conflicts(r, rs = restrictions()) {
   if (!rs.tags.size && !rs.words.length) return [];
   const out = new Set();
   for (const i of r.ings) {
-    const name = i.custom ? i.name : nm(ING[i.k]?.name);
-    const names = i.custom ? yo(i.name) : yo(`${ING[i.k]?.name.ru} ${ING[i.k]?.name.en}`);
-    let tags = i.custom ? [] : (ING[i.k]?.tags || []);
-    if (i.custom) {
-      for (const [tag, list] of Object.entries(TAG_WORDS)) if (list.some(tw => names.includes(yo(tw)))) tags = [...tags, tag];
-    }
-    const byTag = tags.some(tg => rs.tags.has(tg));
-    const byWord = rs.words.some(w => names.includes(w.slice(0, Math.max(3, w.length - 2))));
-    if (byTag || byWord) out.add(name);
+    const info = ingInfo(i);
+    const byTag = info.tags.some(tg => rs.tags.has(tg));
+    const byWord = rs.words.some(w => wordHits(w, info.nameWords));
+    if (byTag || byWord) out.add(info.name);
   }
   return [...out];
+}
+
+// Отчёт для экрана меню: какие продукты убраны и какие слова программа не поняла
+export function restrictionReport() {
+  const rs = restrictions();
+  const excluded = new Set(), used = new Set(rs.tagged);
+  if (rs.tags.size || rs.words.length) {
+    for (const r of [...allRecipes(), ...planRecipes()]) {
+      for (const i of r.ings) {
+        const info = ingInfo(i);
+        const hit = rs.words.filter(w => wordHits(w, info.nameWords));
+        hit.forEach(w => used.add(w));
+        if (hit.length || info.tags.some(tg => rs.tags.has(tg))) excluded.add(info.name);
+      }
+    }
+  }
+  return {
+    any: rs.tags.size > 0 || rs.words.length > 0,
+    excluded: [...excluded].sort((x, y) => x.localeCompare(y)),
+    unknown: rs.words.filter(w => !used.has(w)),
+  };
 }
 
 // ---------- Готовка впрок ----------
@@ -180,7 +234,7 @@ export function groupStorage(plan, m, g) {
   const st = storeInfo(r) || { fridge: 3, freeze: false };
   let fridge = 0, freezer = 0;
   for (const i of g.days) (i - g.cook < st.fridge ? fridge++ : freezer++);
-  return { r, fridge: fridge * plan.servings, freezer: freezer * plan.servings, days: st.fridge };
+  return { r, fridge: fridge * plan.servings, freezer: freezer * plan.servings, days: st.fridge, por: porOf(plan.days[g.days[0]], m) };
 }
 
 // ---------- Подбор меню ----------
@@ -213,7 +267,7 @@ export function generatePlan({ servings, meals, prep }) {
   const start = todayKey();
   const days = Array.from({ length: 7 }, (_, i) => ({ date: addDays(start, i), items: {}, eaten: {} }));
   const pr = prepSetup(prep, meals);
-  const fresh = [];
+  const fresh = [], partial = [];
   // Сначала — блюда впрок: одно блюдо на всю группу дней
   if (pr) {
     const taken = new Set();
@@ -227,7 +281,11 @@ export function generatePlan({ servings, meals, prep }) {
         used.set(r.id, (used.get(r.id) || 0) + g.days.length);
         g.days.forEach(i => { days[i].items[m] = r.id; });
       }
-      if (!pr.groups[m].some(g => days[g.days[0]].items[m])) fresh.push(m);
+      // Группы, для которых не нашлось блюда с нужным сроком хранения, — эти дни готовим свежими
+      const filled = pr.groups[m].filter(g => days[g.days[0]].items[m]);
+      if (!filled.length) fresh.push(m);
+      else if (filled.length < pr.groups[m].length) partial.push(m);
+      pr.groups[m] = filled;
     }
     // Если для приёма пищи нет подходящих блюд — его готовим каждый день свежим
     for (const m of fresh) { delete pr.groups[m]; pr.meals = pr.meals.filter(x => x !== m); }
@@ -235,7 +293,7 @@ export function generatePlan({ servings, meals, prep }) {
   for (const day of days) {
     const dayUsed = new Set(Object.values(day.items).filter(Boolean));
     for (const m of meals) {
-      if (pr?.groups[m]) { day.items[m] = day.items[m] || null; continue; }
+      if (day.items[m]) continue; // уже стоит блюдо из заготовки
       const r = pick(pool, m, goal * MEAL_SHARE[m], used, dayUsed);
       day.items[m] = r ? r.id : null;
       if (r) { used.set(r.id, (used.get(r.id) || 0) + 1); dayUsed.add(r.id); }
@@ -244,7 +302,42 @@ export function generatePlan({ servings, meals, prep }) {
   const plan = { id: uid(), start, servings, meals, days, createdAt: new Date().toISOString() };
   if (pr && pr.meals.length) plan.prep = pr;
   if (fresh.length) plan.prepFresh = fresh;
+  if (partial.length) plan.prepPartial = partial;
+  setPortions(plan, goal);
   return plan;
+}
+
+// ---------- Размер порции под норму калорий ----------
+// В книге порции небольшие (300–500 ккал). Чтобы день сходился с нормой, считаем, сколько порций рецепта
+// нужно одному человеку на этот приём пищи: 1, 1¼, 1½ … Блюда от ИИ уже посчитаны под норму — у них всегда 1.
+export function portionFor(r, meal, goal = kcalGoal()) {
+  if (!r || r.ai || !r.kcal || !MEAL_SHARE[meal]) return 1;
+  const f = Math.round(((goal * MEAL_SHARE[meal]) / r.kcal) * 4) / 4;
+  return Math.min(2.5, Math.max(0.5, f));
+}
+export const porOf = (day, m) => Number(day?.por?.[m]) || 1;
+export function setPortions(plan, goal = kcalGoal()) {
+  plan.porGoal = goal; // под какую норму калорий подобраны порции
+  for (const day of plan.days) {
+    day.por = {};
+    for (const m of plan.meals) {
+      const f = portionFor(recipeById2(plan, day.items[m]), m, goal);
+      if (f !== 1) day.por[m] = f;
+    }
+  }
+}
+// Рецепт по номеру, в том числе из меню, которое ещё не сохранено
+function recipeById2(plan, id) {
+  if (!id) return null;
+  return allRecipes().find(r => r.id === id) || (plan.recipes || []).map(normAi).find(r => r.id === id) || null;
+}
+// Поставить блюдо в день меню и пересчитать его порцию
+export function setItem(plan, di, m, id) {
+  const day = plan.days[di];
+  day.items[m] = id || null;
+  day.por = day.por || {};
+  const f = portionFor(recipeById2(plan, id), m);
+  if (f !== 1) day.por[m] = f; else delete day.por[m];
 }
 
 // Замена блюда в заготовке — только из тех, что хранятся нужный срок
@@ -290,7 +383,7 @@ export function shoppingList(plan) {
           key = i.k;
           entry = map.get(key) || { key, name: nm(d.name), sec: d.sec, u: d.u, q: 0 };
         }
-        entry.q += (i.q || 0) * plan.servings;
+        entry.q += (i.q || 0) * plan.servings * porOf(day, m);
         map.set(key, entry);
       }
     }
@@ -317,21 +410,28 @@ function unitOf(s) {
   for (const [re, base, k] of UNITS) if (re.test(u)) return { u: base, k };
   return null;
 }
+// Число из строки: «1,5», «1/2», «3-4» (из «от и до» берём большее — чтобы хватило)
+const NUM = String.raw`\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?`;
+function numOf(str) {
+  const one = x => { const [p, q] = x.split('/').map(v => parseFloat(v.replace(',', '.'))); return q ? p / q : p; };
+  const parts = str.split(/[-–]/).map(x => x.trim()).filter(Boolean).map(one).filter(v => Number.isFinite(v));
+  return parts.length ? Math.max(...parts) : 0;
+}
 export function parseIngLine(raw) {
   const line = raw.trim().replace(/ст\.\s*л\.?/gi, 'ст.л').replace(/ч\.\s*л\.?/gi, 'ч.л');
   if (!line) return null;
   // «Курица 500 г»
-  let m = line.match(/^(.+?)[\s:—–-]+(\d+(?:[.,]\d+)?)\s*([a-zа-яё.]+)?$/i);
+  let m = line.match(new RegExp(`^(.+?)[\\s:—–-]+(${NUM})\\s*([a-zа-яё.]+)?$`, 'i'));
   if (m) {
-    const q = parseFloat(m[2].replace(',', '.'));
+    const q = numOf(m[2]);
     if (!m[3]) return { name: m[1].trim(), q, u: 'pcs' };
     const un = unitOf(m[3]);
     if (un) return { name: m[1].trim(), q: q * un.k, u: un.u };
   }
-  // «2 яйца», «500 г курицы»
-  m = line.match(/^(\d+(?:[.,]\d+)?)\s*(\S+)\s*(.*)$/);
+  // «2 яйца», «500 г курицы», «1/2 лимона»
+  m = line.match(new RegExp(`^(${NUM})\\s*(\\S+)\\s*(.*)$`));
   if (m) {
-    const q = parseFloat(m[1].replace(',', '.'));
+    const q = numOf(m[1]);
     const un = unitOf(m[2]);
     if (un && m[3]) return { name: m[3].trim(), q: q * un.k, u: un.u };
     return { name: `${m[2]} ${m[3]}`.trim(), q, u: 'pcs' };

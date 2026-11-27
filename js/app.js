@@ -1,5 +1,5 @@
 // Здаровенький — главный файл: экраны и кнопки.
-import { data, save, replaceData, wipeData, todayKey, addDays, keyToDate, getDay, peekDay, uid } from './store.js';
+import { data, save, replaceData, exportData, wipeData, todayKey, addDays, keyToDate, getDay, peekDay, uid } from './store.js';
 import { t, lang, nm, locale } from './i18n.js';
 import * as U from './units.js';
 import * as H from './health.js';
@@ -47,11 +47,29 @@ function dayLabel(key) {
 }
 const fmtDur = m => `${Math.floor(m / 60)} ${t('u_h')} ${m % 60} ${t('u_min')}`;
 const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+// iPhone или iPad (iPad иногда представляется как Mac с сенсорным экраном)
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Слово после числа: 1 очко, 2 очка, 5 очков / 1 point, 2 points
+const WORDS = {
+  day: [['день', 'дня', 'дней'], ['day', 'days']],
+  point: [['очко', 'очка', 'очков'], ['point', 'points']],
+  visit: [['заход', 'захода', 'заходов'], ['visit', 'visits']],
+};
+function word(n, key) {
+  const [ru, en] = WORDS[key];
+  if (lang() !== 'ru') return n === 1 ? en[0] : en[1];
+  const a = n % 10, b = n % 100;
+  return a === 1 && b !== 11 ? ru[0] : a >= 2 && a <= 4 && (b < 12 || b > 14) ? ru[1] : ru[2];
+}
+// Дробное число по-русски с запятой: 1,5
+const fmtNum = x => (Math.round(x * 100) / 100).toLocaleString(locale());
+// «Съел» или «Съела» — по полу из профиля
+const ateKey = k => (data.profile?.sex === 'f' ? k + '_f' : k);
 function mealByTime() {
   const h = new Date().getHours();
   return h < 11 ? 'breakfast' : h < 16 ? 'lunch' : h < 21 ? 'dinner' : 'snack';
 }
-const AIE = ['not_set', 'offline', 'timeout', 'network', 'bad_code', 'no_key', 'no_code_set', 'bad_key', 'busy', 'refusal', 'too_long', 'bad_answer', 'bad_image', 'too_big', 'not_found', 'bad_request', 'server',
+const AIE = ['not_set', 'offline', 'timeout', 'network', 'bad_code', 'no_key', 'no_code_set', 'bad_key', 'busy', 'refusal', 'too_long', 'bad_answer', 'bad_image', 'too_big', 'not_found', 'bad_request', 'server', 'limit', 'locked',
   'denied', 'no_push', 'bad_device', 'too_many', 'no_sub', 'no_vapid'];
 const aiErr = e => t('aie_' + (AIE.includes(e?.code) ? e.code : 'server'));
 function needAi() {
@@ -148,14 +166,15 @@ function backupHint() {
   if (days < 7 || !Object.keys(data.days).length) return '';
   return card(ic('cloud') + t('backup_title'), `<p>${t('backup_remind')}</p><a class="btn primary full" href="#/backup">${t('make_backup')}</a>`, 'warn');
 }
+// Напоминания были включены, но iPhone отменил подписку — честно говорим об этом
+function pushLostHint() {
+  if (!data.push?.lost || !AI.aiReady()) return '';
+  return card(ic('bell') + t('rem_title'), `<p>${t('rem_lost_text')}</p><a class="btn primary full" href="#/reminders">🔔 ${t('rem_enable')}</a>`, 'warn');
+}
 // Объёмные значки (картинки в img/ui, нарисованы Codex)
 const ic = (name, cls = '') => `<img class="i3 ${cls}" src="img/ui/${name}.webp" alt="" aria-hidden="true">`;
 const MEAL_IC = { breakfast: 'egg', lunch: 'soup', dinner: 'fish', snack: 'apple' };
-function daysWord(n) {
-  if (lang() !== 'ru') return `${n} ${n === 1 ? 'day' : 'days'}`;
-  const a = n % 10, b = n % 100;
-  return `${n} ${a === 1 && b !== 11 ? 'день' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'дня' : 'дней'}`;
-}
+const daysWord = n => `${n} ${word(n, 'day')}`;
 function helloCard() {
   return `<section class="hello">
     <div class="hello-t">
@@ -270,7 +289,7 @@ const fmtWk = (dir, kg) => `${dir > 0 ? '−' : '+'}${U.fmtWeight(kg)}`;
 function goalCard() {
   if (!G.active()) {
     const b = H.bmi();
-    if (b == null || (b >= 18.5 && b < 25)) return '';
+    if (b == null || H.bmiHealthy(b)) return '';
     return `<a class="card c-goal" href="#/goal">${ic('target')}<span class="grow"><b>${t('goal_home_set')}</b><small>${t('goal_home_set_sub')}</small></span><span class="go">›</span></a>`;
   }
   const g = data.goalPlan, s = G.status();
@@ -286,7 +305,7 @@ function vToday() {
   const d = peekDay(ui.date);
   const isToday = ui.date === todayKey();
   let html = '';
-  if (isToday) html += helloCard() + installHint() + backupHint();
+  if (isToday) html += helloCard() + installHint() + backupHint() + pushLostHint();
   html += waterCard(d) + kcalCard(d) + (isToday ? goalCard() : '') + tilesCard(d) + habitsCard(d) + menuTodayCard();
   if (isToday) html += coachCard() + tipCard();
   return html;
@@ -392,12 +411,15 @@ function planRow(di, m) {
   const r = day.items[m] && PL.recipeById(day.items[m]);
   const eaten = !!day.eaten?.[m];
   const canEat = r && day.date <= todayKey();
+  const por = PL.porOf(day, m);
   return `<li class="${eaten ? 'done' : ''}"><span class="mtag" title="${t('meal_' + m)}">${MEAL_EMOJI[m]}</span>
-    ${r ? `<a class="grow pl" href="#/recipe/${r.id}"><b>${r.emoji} ${esc(nm(r.name))}</b><small>${t('meal_' + m)} · ${r.kcal} ${t('kcal')} · ⏱ ${r.time} ${t('u_min')}</small>${prepTag(di, m)}</a>`
+    ${r ? `<a class="grow pl" href="#/recipe/${esc(r.id)}"><b>${esc(r.emoji)} ${esc(nm(r.name))}</b><small>${t('meal_' + m)} · ${porKcal(r, por)} ${t('kcal')}${por !== 1 ? ` · ${t('por_x', { n: fmtNum(por) })}` : ''} · ⏱ ${r.time} ${t('u_min')}</small>${prepTag(di, m)}</a>`
     : `<span class="grow muted">${t('meal_' + m)}: ${t('menu_empty_slot')}</span>`}
     <button class="x" data-act="plan-swap" data-d="${di}" data-m="${m}" aria-label="${t('swap')}">↻</button>
-    ${canEat ? `<button class="eat ${eaten ? 'on' : ''}" data-act="plan-eat" data-d="${di}" data-m="${m}">${eaten ? '✓' : t('ate')}</button>` : ''}</li>`;
+    ${canEat ? `<button class="eat ${eaten ? 'on' : ''}" data-act="plan-eat" data-d="${di}" data-m="${m}">${eaten ? '✓' : t(ateKey('ate'))}</button>` : ''}</li>`;
 }
+// Калории блюда с учётом размера порции (×1,5 и т. п.), округлённые до 10
+const porKcal = (r, por) => (por === 1 ? r.kcal : Math.round((r.kcal * por) / 10) * 10);
 // Готовка впрок: метка «готовим / из заготовки / из морозилки»
 function prepTag(di, m) {
   const g = PL.groupOf(data.plan, di, m);
@@ -448,13 +470,16 @@ function prepCard(plan) {
       if (!s.r) return '';
       if (s.freezer) anyFrozen = true;
       const dates = g.days.map(i => fmtDate(plan.days[i].date, { weekday: 'short' })).join(', ');
-      return `<li><span class="mtag">${MEAL_EMOJI[m]}</span><a class="grow pl" href="#/recipe/${s.r.id}" data-act="prep-recipe" data-id="${s.r.id}" data-n="${s.fridge + s.freezer}"><b>${s.r.emoji} ${esc(nm(s.r.name))}</b>
-        <small>${t('meal_' + m)} · ${t('prep_portions', { n: s.fridge + s.freezer, d: esc(dates) })}</small>
+      // Сколько порций рецепта готовить: люди × дни × размер порции (×1,5 и т. п.)
+      const cookN = Math.max(1, Math.round((s.fridge + s.freezer) * s.por));
+      return `<li><span class="mtag">${MEAL_EMOJI[m]}</span><a class="grow pl" href="#/recipe/${esc(s.r.id)}" data-act="prep-recipe" data-id="${esc(s.r.id)}" data-n="${cookN}"><b>${esc(s.r.emoji)} ${esc(nm(s.r.name))}</b>
+        <small>${t('meal_' + m)} · ${t('prep_portions', { n: s.fridge + s.freezer, d: esc(dates) })}${s.por !== 1 ? ` · ${t('por_x', { n: fmtNum(s.por) })}` : ''}</small>
         <small>${t('prep_fridge', { n: s.fridge })}${s.freezer ? ' · ' + t('prep_freezer', { n: s.freezer }) : ''}</small></a></li>`;
     }).join('');
     return `<div class="prep-day ${day.date === tk ? 'now' : ''}"><div class="lbl">👩‍🍳 ${t('prep_cook_day', { d: esc(when) })}</div><ul class="list plan">${rows}</ul></div>`;
   }).join('');
-  const fresh = (plan.prepFresh || []).map(m => `<div class="muted">💡 ${t('prep_fresh_note', { m: t('meal_' + m) })}</div>`).join('');
+  const fresh = (plan.prepFresh || []).map(m => `<div class="muted">💡 ${t('prep_fresh_note', { m: t('meal_' + m) })}</div>`).join('')
+    + (plan.prepPartial || []).map(m => `<div class="muted">💡 ${t('prep_partial_note', { m: t('meal_' + m) })}</div>`).join('');
   return card(ic('stopwatch') + t('prep_title'), `${sessions}${anyFrozen ? `<div class="muted">🧊 ${t('prep_thaw')}</div>` : ''}${fresh}`, 'c-prep');
 }
 function menuTodayCard() {
@@ -466,10 +491,16 @@ function menuTodayCard() {
 
 // ----- Меню на неделю -----
 function restrictionNote() {
-  const rs = PL.restrictions();
-  return rs.tags.size || rs.words.length
-    ? `<div class="muted">⚠️ ${t('menu_excl')}: ${esc([data.profile.allergies, data.profile.dislikes, data.profile.diet].filter(Boolean).join(', '))}</div>`
-    : `<div class="muted">${t('menu_no_excl')} <a href="#/profile">${t('profile_title')} ›</a></div>`;
+  const rep = PL.restrictionReport();
+  if (!rep.any) return `<div class="muted">${t('menu_no_excl')} <a href="#/profile">${t('profile_title')} ›</a></div>`;
+  // Честно показываем, что именно программа убрала и какие слова не поняла
+  const ex = rep.excluded;
+  const list = ex.length > 14 ? `${ex.slice(0, 14).join(', ')} ${t('excl_more', { n: ex.length - 14 })}` : ex.join(', ');
+  return `<div class="excl">
+    <div class="muted">⚠️ ${t('menu_excl')}: ${esc([data.profile.allergies, data.profile.dislikes, data.profile.diet].filter(Boolean).join(', '))}</div>
+    <div class="muted">${ex.length ? `🚫 ${t('excl_list')}: ${esc(list)}` : `ℹ️ ${t('excl_none')}`}</div>
+    ${rep.unknown.length ? `<div class="bad">❓ ${t('excl_unknown', { w: esc(rep.unknown.join(', ')) })}</div>` : ''}
+  </div>`;
 }
 function menuForm() {
   const pp = data.planPrefs;
@@ -516,19 +547,46 @@ async function runAiMenu(servings, meals, wishes, prep) {
       profile: { sex: p.sex, age: p.age, goal: p.goal, allergies: p.allergies, dislikes: p.dislikes, diet: p.diet },
       kcalGoal: H.kcalGoal(), servings, meals, wishes,
       prep: prep && prep.mode ? { mode: prep.mode, meals: prep.meals.filter(m => meals.includes(m)) } : null,
-    });
-    data.plan = PL.planFromAi(res, { servings, meals, prep });
-    data.plansMade = (data.plansMade || 0) + 1;
-    data.shop = { planId: data.plan.id, checked: {} };
-    ui.aiWishes = '';
-    closeSheet();
-    commit();
-    if (route().name === 'menu') window.scrollTo(0, 0);
-    toast(t('menu_ai_ready'));
+    }, job => { data.aiJob = { id: job, at: Date.now(), servings, meals, prep }; save(); });
+    applyAiMenu(res, { servings, meals, prep });
   } catch (e) {
+    data.aiJob = null;
+    save();
     openSheet(aiMenuSheet('form', aiErr(e)));
   } finally {
     ui.aiMenuBusy = false;
+  }
+}
+function applyAiMenu(res, opts) {
+  data.plan = PL.planFromAi(res, opts);
+  data.plansMade = (data.plansMade || 0) + 1;
+  data.shop = { planId: data.plan.id, checked: {} };
+  data.aiJob = null;
+  ui.aiWishes = '';
+  closeSheet();
+  commit();
+  if (route().name === 'menu') window.scrollTo(0, 0);
+  toast(t('menu_ai_ready'));
+}
+// Программу закрыли, пока ИИ писал меню: сервер хранит готовое меню час — забираем его при запуске
+async function resumeAiMenu() {
+  const j = data.aiJob;
+  if (!j?.id || ui.aiMenuBusy || !AI.aiReady()) return;
+  if (Date.now() - j.at > 55 * 60_000) { data.aiJob = null; save(); return; }
+  ui.aiMenuBusy = true;
+  try {
+    const res = await AI.pollMenu(j.id, 300);
+    applyAiMenu(res, { servings: j.servings, meals: j.meals, prep: j.prep });
+  } catch (e) {
+    // Нет связи — попробуем при следующем запуске; другая ошибка — задание пропало, больше не спрашиваем
+    if (!['network', 'timeout', 'offline'].includes(e?.code)) {
+      data.aiJob = null;
+      save();
+      toast('🤖 ' + t('menu_ai_lost'));
+    }
+  } finally {
+    ui.aiMenuBusy = false;
+    if (!$('#sheet').hidden && $('#sheet .ai-wait') && !$('#sheet .photo-prev')) closeSheet();
   }
 }
 function vMenu() {
@@ -539,13 +597,17 @@ function vMenu() {
   html += card(ic('clipboard') + t('menu_title'), `
     <div class="muted">${plan.ai ? '🤖 ' : ''}${t('menu_range', { a: esc(fmtDate(plan.start, short)), b: esc(fmtDate(plan.days[6].date, short)), n: plan.servings })}${plan.prep ? ' · 🍱 ' + t('prep_label', { d: daysWord(plan.prep.mode) }) : ''}</div>
     ${plan.ai && plan.note ? `<div class="ai-note">🤖 ${esc(plan.note)}</div>` : ''}
+    ${plan.days.some(d => d.por && Object.keys(d.por).length) ? `<div class="muted">🍽 ${t('por_note', { n: plan.porGoal || goal })}</div>` : ''}
+    ${!plan.ai && plan.porGoal && Math.abs(goal - plan.porGoal) >= 100 ? `<div class="excl"><div class="muted">⚖️ ${t('por_changed', { a: plan.porGoal, b: goal })}</div>
+      <button class="btn ghost full" data-act="por-recalc">${t('por_recalc')}</button></div>` : ''}
+    ${plan.days.some(d => d.date >= tk && plan.meals.some(m => !d.items[m])) ? `<div class="muted">💡 ${t('menu_gaps')}</div>` : ''}
     <a class="btn primary full" href="#/shop">🛒 ${t('shop_open')}</a>
     <div class="row"><button class="btn ghost grow" data-act="menu-new">↻ ${t('menu_new')}</button>
       <button class="btn ghost" data-act="ai-menu">🤖 ${t('ai')}</button></div>`);
   html += prepCard(plan);
   plan.days.forEach((day, i) => {
     if (day.date < tk) return;
-    const sum = plan.meals.reduce((s, m) => s + (PL.recipeById(day.items[m])?.kcal || 0), 0);
+    const sum = plan.meals.reduce((s, m) => { const r = PL.recipeById(day.items[m]); return s + (r ? porKcal(r, PL.porOf(day, m)) : 0); }, 0);
     const title = day.date === tk ? t('today') : fmtDate(day.date, { weekday: 'long', day: 'numeric', month: 'short' });
     const gap = goal - sum;
     html += card(esc(title), `<ul class="list plan">${plan.meals.map(m => planRow(i, m)).join('')}</ul>
@@ -563,8 +625,8 @@ function swapSheet(di, m) {
     ${PL.groupOf(data.plan, di, m) ? `<div class="muted">🍱 ${t('prep_swap_all')}</div>` : ''}
     <button class="btn primary full" data-act="plan-random" data-d="${di}" data-m="${m}">🎲 ${t('swap_random')}</button>
     <h3>${t('swap_choose')}</h3>
-    <div class="presets">${list.map(r => `<button type="button" class="preset ${r.id === cur ? 'on' : ''}" data-act="plan-set" data-d="${di}" data-m="${m}" data-id="${r.id}">
-      <span>${r.emoji} ${esc(nm(r.name))}</span><small>${r.ai ? '🤖 · ' : ''}${r.kcal} ${t('kcal')} · ⏱ ${r.time} ${t('u_min')}</small></button>`).join('')}</div>
+    <div class="presets">${list.map(r => `<button type="button" class="preset ${r.id === cur ? 'on' : ''}" data-act="plan-set" data-d="${di}" data-m="${m}" data-id="${esc(r.id)}">
+      <span>${esc(r.emoji)} ${esc(nm(r.name))}</span><small>${r.ai ? '🤖 · ' : ''}${r.kcal} ${t('kcal')} · ⏱ ${r.time} ${t('u_min')}</small></button>`).join('')}</div>
     ${cur ? `<button class="btn danger full" data-act="plan-set" data-d="${di}" data-m="${m}" data-id="">${t('remove_from_menu')}</button>` : ''}
     <button class="btn ghost full" data-act="sheet-close">${t('cancel')}</button>
   </div>`;
@@ -572,12 +634,23 @@ function swapSheet(di, m) {
 function setPlanItem(di, m, id) {
   const g = PL.groupOf(data.plan, di, m);
   const tk = todayKey();
-  // В заготовке одно блюдо на все её дни (прошедшие дни не трогаем)
-  const idx = g ? g.days.filter(i => i === di || data.plan.days[i].date >= tk) : [di];
+  // В заготовке одно блюдо на все её дни. Прошедшие дни и дни, где это блюдо уже съедено
+  // и записано в дневник, не трогаем — иначе пропала бы запись еды.
+  const idx = g ? g.days.filter(i => i === di || (data.plan.days[i].date >= tk && !data.plan.days[i].eaten?.[m])) : [di];
   for (const i of idx) {
     const day = data.plan.days[i];
-    if (day.eaten?.[m]) unEat(i, m);
-    day.items[m] = id || null;
+    if (day.eaten?.[m]) {
+      // Меняют именно съеденное блюдо: запись в дневнике остаётся, снимаем только отметку «съел»
+      delete day.eaten[m];
+    }
+    PL.setItem(data.plan, i, m, id);
+  }
+  if (g && idx.length < g.days.length) {
+    // Часть дней осталась со старым блюдом (оно уже съедено или день прошёл) — новое блюдо становится
+    // отдельной заготовкой на оставшиеся дни, и «План готовки» показывает именно его.
+    const first = Math.min(...idx), todayI = planDayIdx(tk);
+    g.days = [...idx].sort((a, b) => a - b);
+    if (!(g.cook >= todayI && g.cook <= first)) g.cook = first;
   }
 }
 function unEat(di, m) {
@@ -660,7 +733,7 @@ function vRecipe(id) {
         <button class="mini" data-act="rs" data-id="${r.id}" data-n="1" aria-label="+">+</button></div>
       <ul class="list">${r.ings.map(ingRow).join('')}</ul>`)
     + (r.steps.length ? card(ic('book') + t('steps'), `<ol class="steps">${r.steps.map(s => `<li>${esc(nm(s))}</li>`).join('')}</ol>`) : '')
-    + `<button class="btn primary full" data-act="recipe-eat" data-id="${r.id}">🍽️ ${t('ate_portion')}</button>`
+    + `<button class="btn primary full" data-act="recipe-eat" data-id="${r.id}">🍽️ ${t(ateKey('ate_portion'))}</button>`
     + (r.ai ? `<button class="btn ghost full" data-act="recipe-keep" data-id="${r.id}">⭐ ${t('recipe_keep')}</button>` : '')
     + (r.custom ? `<div class="row"><a class="btn ghost grow" href="#/recipe-edit/${r.id}">✏️ ${t('edit')}</a>
         <button class="btn danger" data-act="recipe-del" data-id="${r.id}" aria-label="${t('delete')}">🗑</button></div>` : '');
@@ -872,7 +945,8 @@ function vWorkout(id) {
     <p>${esc(nm(w.desc))}</p>
     <div class="muted">${t('wo_meta', { min: Math.round(workoutSec(w) / 60), n: w.exercises.length, r: w.rounds })}</div>
     <ol class="exlist">${w.exercises.map(e => `<li><b>${esc(nm(e.name))}</b> — ${e.sec} ${t('u_sec')}<br><small>${esc(nm(e.hint))}</small></li>`).join('')}</ol>
-    <button class="btn primary full big-btn" data-act="wo-start" data-id="${w.id}">▶ ${t('start')}</button>`);
+    <button class="btn primary full big-btn" data-act="wo-start" data-id="${w.id}">▶ ${t('start')}</button>
+    <div class="muted">🔔 ${t('wo_sound_hint')}${'wakeLock' in navigator ? '' : ' ' + t('wo_screen_hint')}</div>`);
 }
 
 // ----- Сон и дневник -----
@@ -990,10 +1064,14 @@ function vWeight() {
   const p = data.profile;
   const cur = H.currentWeight();
   const b = H.bmi(cur);
-  let goalTxt = t('goal') + ': ' + t('goalc_' + p.goal);
-  if (p.targetKg) {
-    const diff = Math.abs(cur - p.targetKg);
-    goalTxt += ` · ${t('target')} ${U.fmtWeight(p.targetKg)} — ${diff < 0.25 ? t('goal_reached') : t('left_to_go', { v: U.fmtWeight(diff) })}`;
+  // Если идёт план «Цель по весу» — показываем его цель, а не старую из профиля (цель в программе одна)
+  const gp = data.goalPlan;
+  const target = gp ? gp.targetKg : p.targetKg;
+  let goalTxt = t('goal') + ': ' + t('goalc_' + (gp ? (gp.dir > 0 ? 'lose' : 'gain') : p.goal));
+  if (target) {
+    const diff = Math.abs(cur - target);
+    const reached = gp ? H.goalReached(cur) : diff < 0.25;
+    goalTxt += ` · ${t('target')} ${U.fmtWeight(target)} — ${reached ? t('goal_reached') : t('left_to_go', { v: U.fmtWeight(diff) })}`;
   }
   let html = card(ic('scale') + t('weight_title'), `
     <div class="big">${U.kgToShow(cur)}<small> ${U.weightUnit()}</small></div>
@@ -1043,8 +1121,9 @@ function goalChart(g, eta) {
 }
 function goalOption(kg, days, label) {
   const c = G.calcPlan(kg, days);
+  const kcal = c.dir > 0 ? Math.max(c.kcal, c.floor) : c.kcal;
   return `<button type="button" class="preset goal-opt" data-act="goal-start" data-kg="${kg}" data-days="${days}">
-    <span>${label}</span><small>${t('goal_opt_kcal', { kcal: c.kcal, wk: esc(fmtWk(c.dir, c.weekly)) })}</small></button>`;
+    <span>${label}</span><small>${t('goal_opt_kcal', { kcal, wk: esc(fmtWk(c.dir, c.weekly)) })}</small></button>`;
 }
 function goalSetup() {
   const p = data.profile, hr = G.healthyRange(), cur = H.currentWeight(), b = H.bmi(cur);
@@ -1060,14 +1139,23 @@ function goalSetup() {
   let res = '';
   if (c) {
     const dTxt = d => esc(fmtDate(addDays(todayKey(), d), { day: 'numeric', month: 'long', year: 'numeric' }));
-    res = c.safe
-      ? `<div class="goal-res ok">✅ ${t('goal_ok', { kcal: c.kcal, w: esc(fmtWk(c.dir, c.weekly)) })}</div>
-        <button class="btn primary full big-btn" data-act="goal-start" data-kg="${c.targetKg}" data-days="${c.days}">${t('goal_start')}</button>`
-      : `<div class="goal-res warn">⚠️ ${t('goal_too_fast', { w: esc(fmtWk(c.dir, c.weekly)), max: esc(U.fmtWeight(c.maxW)), min: c.floor })}</div>
-        <div class="presets">
-          ${goalOption(c.targetKg, c.safeDays, t('goal_opt_date', { w: esc(U.fmtWeight(c.targetKg)), d: dTxt(c.safeDays) }))}
-          ${Math.abs(c.stepKg - c.cur) >= 1 ? goalOption(c.stepKg, c.days, t('goal_opt_step', { w: esc(U.fmtWeight(c.stepKg)), n: dr.months || 6 })) : ''}
-        </div>`;
+    if (c.unhealthy) {
+      // Цель за пределами здорового веса — такой план не строим, предлагаем границу нормы
+      const lim = c.unhealthy === 'low' ? c.hr.min : c.hr.max;
+      res = `<div class="goal-res warn">⚠️ ${t('goal_unhealthy_' + c.unhealthy, { w: esc(U.fmtWeight(c.targetKg)), lim: esc(U.fmtWeight(lim)) })}</div>
+        <button type="button" class="btn primary full" data-act="goal-fill" data-go="1" data-v="${U.kgToShow(lim)}">${t('goal_use_limit', { w: esc(U.fmtWeight(lim)) })}</button>`;
+    } else if (c.safe) {
+      res = `<div class="goal-res ok">✅ ${t('goal_ok', { kcal: c.kcal, w: esc(fmtWk(c.dir, c.weekly)) })}</div>
+        <button class="btn primary full big-btn" data-act="goal-start" data-kg="${c.targetKg}" data-days="${c.days}">${t('goal_start')}</button>`;
+    } else {
+      // Варианты: та же цель, но позже (если это не растянется на годы), или цель поближе к тому же сроку
+      const optDate = c.safeDays && c.safeDays <= 1100 ? goalOption(c.targetKg, c.safeDays, t('goal_opt_date', { w: esc(U.fmtWeight(c.targetKg)), d: dTxt(c.safeDays) })) : '';
+      const optStep = c.stepKg != null && Math.abs(c.stepKg - c.cur) >= 1 ? goalOption(c.stepKg, c.days, t('goal_opt_step', { w: esc(U.fmtWeight(c.stepKg)), n: dr.months || 6 })) : '';
+      const why = c.noRoom || !(optDate || optStep) ? t('goal_no_room', { tdee: c.tdee, min: c.floor })
+        : c.why === 'kcal' ? t('goal_too_low', { kcal: c.kcal, min: c.floor })
+          : t('goal_too_fast', { w: esc(fmtWk(c.dir, c.weekly)), max: esc(U.fmtWeight(c.maxW)), min: c.floor });
+      res = `<div class="goal-res warn">⚠️ ${why}</div>${optDate || optStep ? `<div class="presets">${optDate}${optStep}</div>` : ''}`;
+    }
     res += `<div class="muted">${t('goal_doctor')}</div>`;
   }
   html += card(ic('star') + t('goal_set'), `<form data-form="goal">
@@ -1119,7 +1207,7 @@ function goalProgress() {
     if (G.daysBetween(k, tk) > 60) break;
   }
   html += card(ic('calendar') + t('goal_days_title'), rows.length ? `<ul class="list goal-days">${rows.join('')}</ul>` : `<div class="muted">${t('goal_days_empty')}</div>`);
-  html += card(ic('bulb') + t('goal_how'), `<p class="muted">${t(g.dir > 0 ? 'goal_how_text' : 'goal_how_gain', { d: g.daily })}</p>
+  html += card(ic('bulb') + t('goal_how'), `<p class="muted">${t(g.dir > 0 ? 'goal_how_text' : 'goal_how_gain', { d: g.daily, u: t(U.isUS() ? 'kcal_per_lb' : 'kcal_per_kg') })}</p>
     <div class="row"><button class="btn ghost grow" data-act="goal-edit">${t('goal_edit')}</button>
     <button class="btn danger" data-act="goal-del" aria-label="${t('goal_del')}">🗑</button></div>`);
   return html;
@@ -1149,9 +1237,9 @@ function vHabits() {
 function vAwards() {
   const pts = P.totalPoints(), lv = P.level(pts);
   return card(`${ic('star')}${t('level')} ${lv.level}`, `
-      <div class="big">${pts}<small> ${t('points')}</small></div>
+      <div class="big">${pts}<small> ${word(pts, 'point')}</small></div>
       ${bar(lv.progress)}
-      <div class="muted">${t('to_next', { n: P.POINTS_PER_LEVEL - lv.inLevel })}</div>
+      <div class="muted">${t('to_next', { n: `${P.POINTS_PER_LEVEL - lv.inLevel} ${word(P.POINTS_PER_LEVEL - lv.inLevel, 'point')}` })}</div>
       <div>🔥 ${t('active_streak', { n: P.activeStreak() })}</div>`, 'hero h-level')
     + card(ic('trophy') + t('badges'), `<div class="badges">${P.BADGES.map(b => {
       const got = data.badges[b.id];
@@ -1170,7 +1258,17 @@ function vProfile(isOnb) {
   const s = data.settings, us = U.isUS();
   const fi = p.heightCm ? U.cmToFtIn(p.heightCm) : { ft: '', inch: '' };
   const wNow = p.weightKg ? U.kgToShow(isOnb ? p.weightKg : H.currentWeight()) : '';
+  const planOn = !isOnb && G.active();
   let html = '';
+  // iPhone, открыто в Safari: сначала предлагаем поставить на главный экран. У значка на экране своя «память»,
+  // и записи, сделанные в Safari, туда не переедут (а Safari может стереть их, если неделю не заходить).
+  if (isOnb && isIOS() && !isStandalone() && !ui.skipInstall) {
+    return `<section class="welcome"><img class="welcome-art" src="img/ui/family.webp" alt=""><h2>${t('welcome_title')}</h2><p>${t('install_first')}</p></section>`
+      + card(ic('gear') + t('language'), `<div class="chips">${chipBtn('set-lang', 'ru', 'Русский', s.lang === 'ru')}${chipBtn('set-lang', 'en', 'English', s.lang === 'en')}</div>`)
+      + card(ic('house') + t('install_title'), `<ol class="steps">${t('install_steps')}</ol>
+        <p class="muted">${t('install_first_why')}</p>
+        <button class="btn ghost full" data-act="skip-install">${t('install_skip')}</button>`);
+  }
   if (isOnb) {
     html += `<section class="welcome"><img class="welcome-art" src="img/ui/family.webp" alt=""><h2>${t('welcome_title')}</h2><p>${t('welcome_text')}</p></section>`;
     html += card(ic('gear') + t('lang_units'), `
@@ -1190,11 +1288,12 @@ function vProfile(isOnb) {
       <label class="fld"><span>${t('age')}</span><input name="age" type="number" inputmode="numeric" min="10" max="110" required value="${p.age}"></label>
       ${height}
     </div>
-    <div class="two">
+    <div class="${planOn ? '' : 'two'}">
       <label class="fld"><span>${t('weight')}, ${U.weightUnit()}</span><input name="w" type="text" inputmode="decimal" required value="${wNow}"></label>
-      <label class="fld"><span>${t('target_weight')}, ${U.weightUnit()}</span><input name="tw" type="text" inputmode="decimal" value="${p.targetKg ? U.kgToShow(p.targetKg) : ''}" placeholder="${t('optional')}"></label>
+      ${planOn ? '' : `<label class="fld"><span>${t('target_weight')}, ${U.weightUnit()}</span><input name="tw" type="text" inputmode="decimal" value="${p.targetKg ? U.kgToShow(p.targetKg) : ''}" placeholder="${t('optional')}"></label>`}
     </div>
-    <div class="lbl">${t('goal')}</div><div class="chips">${['lose', 'keep', 'gain'].map(g => radio('goal', g, t('goalc_' + g), p.goal === g)).join('')}</div>
+    ${planOn ? `<div class="muted">${t('profile_goal_note', { w: esc(U.fmtWeight(data.goalPlan.targetKg)) })} <a href="#/goal">${t('goal_open')} ›</a></div>`
+    : `<div class="lbl">${t('goal')}</div><div class="chips">${['lose', 'keep', 'gain'].map(g => radio('goal', g, t('goalc_' + g), p.goal === g)).join('')}</div>`}
     <label class="fld"><span>${t('activity')}</span><select name="activity">${H.ACTIVITY_LEVELS.map(a => `<option value="${a.v}" ${Number(p.activity) === a.v ? 'selected' : ''}>${t(a.key)}</option>`).join('')}</select></label>
     <label class="fld"><span>${t('allergies')}</span><input name="allergies" maxlength="200" value="${esc(p.allergies)}" placeholder="${t('allergies_ph')}"></label>
     <label class="fld"><span>${t('dislikes')}</span><input name="dislikes" maxlength="200" value="${esc(p.dislikes)}" placeholder="${t('dislikes_ph')}"></label>
@@ -1248,7 +1347,7 @@ function vReminders() {
       <div class="row"><button class="btn ghost grow" data-act="push-test">🧪 ${t('rem_test')}</button>
       <button class="btn ghost grow" data-act="push-off">${t('rem_disable')}</button></div>`;
   } else {
-    top = `<p class="muted">${t('rem_off_text')}</p>${Notification.permission === 'denied' ? `<p class="bad">${t('rem_denied')}</p>` : ''}
+    top = `${data.push?.lost ? `<p class="bad">⚠️ ${t('rem_lost_text')}</p>` : `<p class="muted">${t('rem_off_text')}</p>`}${Notification.permission === 'denied' ? `<p class="bad">${t('rem_denied')}</p>` : ''}
       <button class="btn primary full big-btn" data-act="push-on">🔔 ${t('rem_enable')}</button>`;
   }
   const r = R.reminders();
@@ -1264,6 +1363,20 @@ function vReminders() {
   return card(ic('bell') + t('rem_title'), `<p>${t('rem_intro')}</p>${top}`)
     + `<form data-form="reminders" class="card"><h2>${t('rem_list')}</h2><p class="muted">${t('rem_list_hint')}</p>
       <ul class="list">${rows}</ul><button class="btn primary full">${t('save')}</button></form>`;
+}
+// Расписание напоминаний из формы на экране
+function readReminders(fd) {
+  const r = {};
+  for (const k of R.REM_TYPES) {
+    r[k] = { on: fd.get('on_' + k) === 'on' };
+    if (k === 'water') {
+      Object.assign(r[k], { every: Number(fd.get('water_every')) || 2, from: fd.get('water_from') || '10:00', to: fd.get('water_to') || '20:00' });
+    } else {
+      r[k].at = fd.get(k + '_at') || R.DEFAULT_REMINDERS[k].at;
+      if (k === 'weight' || k === 'backup') r[k].day = Number(fd.get(k + '_day'));
+    }
+  }
+  return r;
 }
 async function pushAction(fn, okMsg) {
   ui.pushBusy = true;
@@ -1300,7 +1413,7 @@ function vAntiYt() {
   else if (st.error) body = `<p class="bad">⚠️ ${esc(st.error)}</p>`;
   else {
     const today = st.days[st.days.length - 1], over = today.min >= st.limit;
-    body = `<div class="big">${today.opens} <small>${t('yt_opens')}</small></div>
+    body = `<div class="big">${today.opens} <small>${word(today.opens, 'visit')}</small></div>
       <div class="${over ? 'bad' : 'muted'}">${t('yt_min_of', { m: today.min, l: st.limit })}${over ? ' — ' + t('yt_over') : ''}</div>
       ${bar(today.min / st.limit, over ? 'bad' : '')}
       ${st.inApp ? `<p class="muted">${t('yt_in_app')}</p>` : ''}
@@ -1333,7 +1446,8 @@ function vBackup() {
 }
 async function backupSave() {
   const stamp = todayKey();
-  const json = JSON.stringify({ app: 'zdorovenkiy', exportedAt: new Date().toISOString(), data }, null, 1);
+  // exportData() — копия без семейного пароля и без «пропуска» этого телефона на сервер
+  const json = JSON.stringify({ app: 'zdorovenkiy', exportedAt: new Date().toISOString(), data: exportData() }, null, 1);
   const fileName = `zdorovenkiy-backup-${stamp}.json`;
   const file = new File([json], fileName, { type: 'application/json' });
   try {
@@ -1362,10 +1476,18 @@ async function backupLoad(file) {
     if (obj?.app !== 'zdorovenkiy' || !obj.data) { toast(t('backup_bad')); return; }
     const when = obj.exportedAt ? new Date(obj.exportedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : '?';
     if (!confirm(t('restore_q', { d: when }))) return;
+    // Семейный пароль, «пропуск» этого телефона и напоминания остаются от ЭТОГО телефона, а не из файла.
+    // (В старых копиях пароль ещё лежал внутри — тогда берём его оттуда, чтобы не вписывать заново.)
+    const mine = { code: data.settings.aiCode, device: data.device, push: data.push };
     replaceData(obj.data);
+    if (mine.code) data.settings.aiCode = mine.code;
+    data.device = mine.device || data.device || null;
+    data.push = mine.push?.on ? mine.push : { on: false };
+    data.aiJob = null;
+    save();
     ui.date = todayKey();
     render();
-    toast(t('restored'));
+    toast(t(data.settings.aiUrl && !data.settings.aiCode ? 'restored_need_code' : 'restored'));
   } catch {
     toast(t('backup_bad'));
   }
@@ -1408,6 +1530,9 @@ const ACTIONS = {
     if (!confirm(t('confirm_delete'))) return;
     const d = getDay(ui.date);
     d.food = d.food.filter(f => f.id !== el.dataset.id);
+    // Запись была сделана кнопкой «Съел» в меню — снимаем и галочку там
+    const pd = data.plan?.days.find(x => x.date === ui.date);
+    if (pd?.eaten) for (const m of Object.keys(pd.eaten)) if (pd.eaten[m] === el.dataset.id) delete pd.eaten[m];
     commit();
   },
   'photo': () => { if (!needAi()) $('#photo-file')?.click(); },
@@ -1458,7 +1583,8 @@ const ACTIONS = {
     commit();
   },
   'set-lang': el => { data.settings.lang = el.dataset.v; save(); render(); },
-  'set-units': el => { data.settings.units = el.dataset.v; save(); render(); },
+  'set-units': el => { data.settings.units = el.dataset.v; save(); ui.dropFields = ['w', 'tw', 'cm', 'ft', 'in']; render(); },
+  'skip-install': () => { ui.skipInstall = true; render(); window.scrollTo(0, 0); },
   'weight-del': el => {
     if (!confirm(t('confirm_delete'))) return;
     data.weights = data.weights.filter(w => w.date !== el.dataset.date);
@@ -1526,6 +1652,9 @@ const ACTIONS = {
   },
   // --- Напоминания и анти-YouTube ---
   'push-on': () => {
+    // Расписание, которое сейчас на экране (даже если «Сохранить» ещё не нажали), — оно и уйдёт на сервер
+    const f = view.querySelector('form[data-form="reminders"]');
+    if (f) { data.reminders = readReminders(new FormData(f)); save(); }
     const p = R.enablePush(); // разрешение спрашивается сразу, пока «нажатие» ещё свежее
     pushAction(p, t('rem_enabled'));
   },
@@ -1560,9 +1689,15 @@ const ACTIONS = {
     data.plan = null;
     commit();
   },
-  'goal-fill': el => { el.closest('form').elements.tw.value = el.dataset.v; },
+  'goal-fill': el => {
+    const f = el.closest('form') || view.querySelector('form[data-form="goal"]');
+    if (!f) return;
+    f.elements.tw.value = el.dataset.v;
+    if (el.dataset.go) FORMS.goal(f, new FormData(f)); // сразу пересчитать с новой целью
+  },
   'goal-start': el => {
     const kg = Number(el.dataset.kg), days = Number(el.dataset.days);
+    if (!(kg > 0 && days > 0) || G.calcPlan(kg, days).unhealthy) { toast(t('goal_not_healthy')); return; }
     const g = G.startPlan(kg, days);
     data.profile.goal = g.dir > 0 ? 'lose' : 'gain';
     data.profile.targetKg = kg;
@@ -1578,6 +1713,18 @@ const ACTIONS = {
     data.goalPlan = null;
     ui.goalEdit = false; ui.goalCalc = null;
     commit();
+  },
+  // Норма калорий изменилась — подогнать порции в ещё не съеденных блюдах с сегодняшнего дня
+  'por-recalc': () => {
+    const plan = data.plan, tk = todayKey();
+    if (!plan) return;
+    plan.days.forEach((day, i) => {
+      if (day.date < tk) return;
+      for (const m of plan.meals) if (!day.eaten?.[m]) PL.setItem(plan, i, m, day.items[m]);
+    });
+    plan.porGoal = H.kcalGoal();
+    commit();
+    toast(t('saved'));
   },
   'plan-swap': el => openSheet(swapSheet(Number(el.dataset.d), el.dataset.m)),
   'plan-random': el => {
@@ -1598,11 +1745,13 @@ const ACTIONS = {
     if (day.eaten[m]) { unEat(di, m); commit(); return; }
     const r = PL.recipeById(day.items[m]);
     if (!r) return;
-    const entry = { id: uid(), meal: m, name: `${r.emoji} ${nm(r.name)}`, kcal: r.kcal, at: Date.now() };
+    // В дневник идёт столько калорий, сколько в порции из меню (×1,5 и т. п.)
+    const por = PL.porOf(day, m), kcal = porKcal(r, por);
+    const entry = { id: uid(), meal: m, name: `${r.emoji} ${nm(r.name)}${por !== 1 ? ` ×${fmtNum(por)}` : ''}`, kcal, at: Date.now() };
     getDay(day.date).food.push(entry);
     day.eaten[m] = entry.id;
     commit();
-    toast(t('logged_food', { n: r.kcal }));
+    toast(t('logged_food', { n: kcal }));
   },
   'shop-check': el => {
     const k = el.dataset.key;
@@ -1703,6 +1852,8 @@ const FORMS = {
   },
   profile: (f, fd) => {
     const isOnb = !data.profile;
+    const old = data.profile;
+    const planOn = !isOnb && G.active(); // идёт план «Цель по весу» — цель и желаемый вес задаёт он
     const prevW = H.currentWeight();
     const heightCm = U.isUS() ? U.ftInToCm(num(fd.get('ft')) || 0, num(fd.get('in')) || 0) : num(fd.get('cm'));
     const w = U.showToKg(num(fd.get('w')));
@@ -1712,8 +1863,8 @@ const FORMS = {
     if (!(w > 20 && w < 350)) { toast(t('bad_weight')); return; }
     data.profile = {
       name: String(fd.get('name')).trim(), sex: fd.get('sex'), age: Math.round(num(fd.get('age'))),
-      heightCm: Math.round(heightCm * 10) / 10, weightKg: w, targetKg: tw > 0 ? U.showToKg(tw) : null,
-      goal: fd.get('goal') || 'keep', activity: Number(fd.get('activity')) || 1.375,
+      heightCm: Math.round(heightCm * 10) / 10, weightKg: w, targetKg: planOn ? old.targetKg : tw > 0 ? U.showToKg(tw) : null,
+      goal: planOn ? old.goal : fd.get('goal') || 'keep', activity: Number(fd.get('activity')) || 1.375,
       allergies: String(fd.get('allergies') || '').trim(), dislikes: String(fd.get('dislikes') || '').trim(),
       diet: String(fd.get('diet') || '').trim(),
     };
@@ -1764,17 +1915,7 @@ const FORMS = {
     toast(t('saved'));
   },
   reminders: async (f, fd) => {
-    const r = {};
-    for (const k of R.REM_TYPES) {
-      r[k] = { on: fd.get('on_' + k) === 'on' };
-      if (k === 'water') {
-        Object.assign(r[k], { every: Number(fd.get('water_every')) || 2, from: fd.get('water_from') || '10:00', to: fd.get('water_to') || '20:00' });
-      } else {
-        r[k].at = fd.get(k + '_at') || R.DEFAULT_REMINDERS[k].at;
-        if (k === 'weight' || k === 'backup') r[k].day = Number(fd.get(k + '_day'));
-      }
-    }
-    data.reminders = r;
+    data.reminders = readReminders(fd);
     save();
     if (!R.pushOn()) { toast(AI.aiReady() && R.pushSupported() ? t('rem_saved_off') : t('saved')); return; }
     try {
@@ -1886,6 +2027,35 @@ const VIEWS = {
   menu: vMenu, shop: vShop, recipes: vRecipes, recipe: vRecipe, 'recipe-edit': vRecipeEdit,
 };
 
+// Набранное в формах, но ещё не сохранённое. Экран перерисовывается целиком (сохранили соседнюю форму,
+// пришёл ответ сервера) — без этого поля «Сон» стирались бы при сохранении «Дневника» и наоборот.
+const isBox = el => el.type === 'radio' || el.type === 'checkbox';
+function grabDrafts() {
+  const out = {};
+  view.querySelectorAll('form[data-form]').forEach(f => {
+    if (f.dataset.form === ui.submitted) return; // эту форму только что сохранили — покажем сохранённое
+    const vals = {};
+    for (const el of f.elements) {
+      if (!el.name || el.type === 'file') continue;
+      if (isBox(el)) vals[`${el.name}=${el.value}`] = el.checked; else vals[el.name] = el.value;
+    }
+    out[f.dataset.form] = vals;
+  });
+  return out;
+}
+function putDrafts(drafts, skip = []) {
+  view.querySelectorAll('form[data-form]').forEach(f => {
+    const vals = drafts[f.dataset.form];
+    if (!vals) return;
+    for (const el of f.elements) {
+      if (!el.name || el.type === 'file' || skip.includes(el.name)) continue;
+      const k = isBox(el) ? `${el.name}=${el.value}` : el.name;
+      if (!(k in vals)) continue;
+      if (isBox(el)) el.checked = vals[k]; else el.value = vals[k];
+    }
+  });
+}
+
 function render() {
   const r = route();
   if (!data.profile && r.name !== 'onboarding') { location.replace('#/onboarding'); return; }
@@ -1895,7 +2065,13 @@ function render() {
   document.title = t('app_name');
   header(r);
   updateNav(r.name);
+  // Тот же экран и тот же день — переносим недописанные поля форм в новую отрисовку
+  const viewKey = `${location.hash}|${ui.date}`;
+  const drafts = viewKey === ui.viewKey ? grabDrafts() : null;
+  ui.viewKey = viewKey;
   view.innerHTML = (VIEWS[r.name] || vToday)(r.arg);
+  if (drafts) putDrafts(drafts, ui.dropFields || []);
+  ui.dropFields = null;
   ui.goalShift = G.active() ? G.totalShift() : null;
   if (r.name === 'sleep') { const f = view.querySelector('form[data-form="sleep"]'); if (f) updateSleepPreview(f); }
   if (r.name === 'workout' && wo) drawPlayer();
@@ -1913,7 +2089,15 @@ document.addEventListener('click', e => {
 document.addEventListener('submit', e => {
   const f = e.target;
   const fn = FORMS[f.dataset.form];
-  if (fn) { e.preventDefault(); fn(f, new FormData(f)); }
+  if (!fn) return;
+  e.preventDefault();
+  // Пока форма сохраняется, её поля при перерисовке берём из сохранённых данных, а не из «черновика»
+  const name = f.dataset.form;
+  ui.submitted = name;
+  const done = () => { if (ui.submitted === name) ui.submitted = null; };
+  let p;
+  try { p = fn(f, new FormData(f)); } finally { if (!p?.finally) done(); }
+  p?.finally?.(done)?.catch?.(() => { /* ошибку покажет сама форма */ });
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'rsearch') { ui.rq = e.target.value; filterRecipes(); return; }
@@ -1942,10 +2126,31 @@ document.addEventListener('visibilitychange', () => {
     if (!wo) render();
   }
   if (wo && !wo.done && !wo.paused) requestWake();
+  afterStart();
 });
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
   navigator.serviceWorker.register('./sw.js').catch(() => { /* без офлайна */ });
 }
 
+// После запуска и при возвращении в программу: забрать меню от ИИ, если его делали, когда программу закрыли,
+// и проверить, правда ли ещё работают напоминания (не чаще раза в 6 часов).
+function afterStart() {
+  if (!data.profile) return;
+  resumeAiMenu();
+  if (Date.now() - (ui.pushCheckedAt || 0) < 6 * 3600e3) return;
+  ui.pushCheckedAt = Date.now();
+  R.verifyPush().then(res => {
+    if (res !== 'lost') return;
+    toast('🔔 ' + t('rem_lost'));
+    if (['reminders', 'today'].includes(route().name)) render();
+  }).catch(() => {
+    // Нет связи — попробуем ещё раз минут через десять, а не через 6 часов
+    ui.pushCheckedAt = Date.now() - 6 * 3600e3 + 10 * 60_000;
+  });
+}
+
 render();
+// Просим iPhone не стирать записи программы, когда на телефоне мало места
+try { navigator.storage?.persist?.()?.catch?.(() => {}); } catch { /* не поддерживается */ }
+afterStart();

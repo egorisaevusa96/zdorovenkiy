@@ -11,13 +11,13 @@ export const active = () => !!data.goalPlan;
 export function healthyRange() {
   const p = data.profile;
   const h = p.heightCm / 100;
-  const [lo, hi] = p.age >= 65 ? [22, 27] : [18.5, 25]; // после 65 лет врачи советуют чуть больший вес
+  const [lo, hi] = H.bmiRange(p.age); // после 65 лет врачи советуют чуть больший вес
   const inch = p.heightCm / 2.54;
   const ideal = (p.sex === 'm' ? 50 : 45.5) + 2.3 * Math.max(0, inch - 60); // формула Девайна (учитывает пол)
   const min = lo * h * h, max = hi * h * h;
   const cur = H.currentWeight();
   const suggest = cur > max ? Math.floor(max) : cur < min ? Math.ceil(min) : Math.round(cur);
-  return { lo, hi, min: Math.ceil(min), max: Math.floor(max), ideal: r1(ideal), suggest, inRange: cur >= min && cur <= max };
+  return { lo, hi, min: Math.ceil(min), max: Math.floor(max), exMin: min, exMax: max, ideal: r1(ideal), suggest, inRange: cur >= min && cur <= max };
 }
 
 // Самый быстрый безопасный темп, кг в неделю
@@ -35,11 +35,25 @@ export function calcPlan(targetKg, days) {
   const maxW = maxWeekly(dir, cur);
   const floor = H.minKcal();
   const maxDaily = Math.min((maxW * KCAL_PER_KG) / 7, dir > 0 ? tdee - floor : Infinity);
-  const safe = weekly <= maxW + 1e-6 && (dir < 0 || kcal >= floor);
-  const res = { cur, targetKg, dir, kg, days, daily, kcal, weekly, safe, maxW, floor };
+  const tooFast = weekly > maxW + 1e-6;
+  const safe = !tooFast && (dir < 0 || kcal >= floor);
+  const res = { cur, targetKg, dir, kg, days, daily, kcal, weekly, safe, maxW, floor, tdee: Math.round(tdee / 10) * 10 };
+  // Цель за пределами здорового веса — такой план не строим
+  const hr = healthyRange();
+  if (dir > 0 && targetKg < hr.exMin - 0.1) res.unhealthy = 'low';
+  if (dir < 0 && targetKg > hr.exMax + 0.1) res.unhealthy = 'high';
+  if (res.unhealthy) { res.safe = false; res.hr = hr; return res; }
   if (!safe) {
-    res.safeDays = Math.ceil((kg * KCAL_PER_KG) / maxDaily);
-    res.stepKg = Math.round((cur - (dir * maxDaily * days) / KCAL_PER_KG) * 2) / 2;
+    res.why = tooFast ? 'pace' : 'kcal'; // слишком быстро или пришлось бы есть меньше минимума
+    if (maxDaily < 100) {
+      // Организм тратит почти столько же, сколько безопасный минимум калорий: одной едой не похудеть
+      res.noRoom = true;
+    } else {
+      res.safeDays = Math.ceil((kg * KCAL_PER_KG) / maxDaily);
+      // Куда можно безопасно дойти за этот же срок (округляем в сторону нынешнего веса, чтобы темп остался безопасным)
+      const step = (cur - (dir * maxDaily * days) / KCAL_PER_KG) * 2;
+      res.stepKg = (dir > 0 ? Math.ceil(step - 1e-6) : Math.floor(step + 1e-6)) / 2;
+    }
   }
   return res;
 }
@@ -71,8 +85,10 @@ export function dayShift(key) {
   const g = data.goalPlan, d = data.days[key];
   if (!g || !d || key < g.start || key > todayKey()) return null;
   const plan = H.planKcal(weightOn(key));
-  let food = d.food.length ? (g.dir * (H.dayEaten(d) - plan)) / g.daily : 0;
+  const eaten = H.dayEaten(d);
+  let food = d.food.length ? (g.dir * (eaten - plan)) / g.daily : 0;
   if (key === todayKey()) food = g.dir > 0 ? Math.max(0, food) : 0; // день не закончился — считаем только перебор
+  else if (eaten < plan * 0.5) food = 0; // записано меньше половины нормы — день, похоже, записан не весь: считаем «по плану»
   food = Math.max(-0.5, Math.min(3, food)); // если съели совсем мало (или забыли записать) — не больше полдня выгоды
   const sport = (-g.dir * H.dayBurned(d)) / g.daily;
   const total = food + sport;

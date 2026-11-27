@@ -34,6 +34,7 @@ export async function aiCall(path, body = {}, opts = {}) {
       headers: { 'Content-Type': 'application/json', 'X-Family-Code': code },
       body: JSON.stringify({ lang: data.settings.lang, ...body }),
       signal: ctrl.signal,
+      ...(opts.keepalive ? { keepalive: true } : {}), // запрос дойдёт, даже если программу тут же закрыли
     });
   } catch (e) {
     throw new AiError(e?.name === 'AbortError' ? 'timeout' : 'network');
@@ -49,12 +50,16 @@ export async function aiCall(path, body = {}, opts = {}) {
 // Меню от ИИ: сервер делает его в фоне, а мы раз в 4 секунды спрашиваем «готово?».
 // Если связь моргнула или телефон уснул — просто спрашиваем дальше, меню не теряется.
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-export async function aiMenu(body) {
+export async function aiMenu(body, onJob) {
   const { job } = await aiCall('menu-start', body);
+  if (onJob) onJob(job); // запоминаем номер задания: если iPhone выгрузит программу, заберём меню при следующем запуске
+  return pollMenu(job);
+}
+export async function pollMenu(job, first = 4000) {
   const until = Date.now() + 10 * 60_000;
   let fails = 0;
-  for (;;) {
-    await sleep(4000);
+  for (let n = 0; ; n++) {
+    await sleep(n ? 4000 : first);
     let st = null;
     try {
       st = await aiCall('menu-status', { job });

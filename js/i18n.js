@@ -60,7 +60,7 @@ const D = {
   log_sleep: ['Записать сон', 'Log sleep'],
   tip_title: ['Совет дня', 'Tip of the day'],
 
-  install_hint: ['Добавьте Здаровенький на главный экран — он будет открываться как настоящее приложение.', 'Add Zdarovenkiy to your Home Screen — it will open like a real app.'],
+  install_hint: ['Добавьте Здаровенький на главный экран — он будет открываться как настоящее приложение, а записи будут в сохранности.', 'Add Zdarovenkiy to your Home Screen — it will open like a real app and your entries will be safer.'],
   how_install: ['Как это сделать', 'Show me how'],
   hide: ['Скрыть', 'Hide'],
   backup_remind: ['Больше недели без резервной копии. Сохраните записи, чтобы не потерять их.', 'It’s been over a week since your last backup. Save your data so you don’t lose it.'],
@@ -179,8 +179,8 @@ const D = {
   goal_days_title: ['Как идёт по дням', 'Day by day'],
   goal_days_empty: ['Записывайте еду и спорт — здесь появится, на сколько дней каждый день приблизил цель.', 'Log food and sport — here you will see how many days each day moved your goal.'],
   goal_how: ['Как считается', 'How it works'],
-  goal_how_text: ['1 кг ≈ 7700 ккал. По плану вы каждый день едите на {d} ккал меньше, чем тратит организм. Значит, {d} ккал = 1 день: сожгли на тренировке {d} ккал — цель на день ближе, съели на {d} ккал больше нормы — на день дальше. Дни без записанной еды считаются «по плану».', '1 kg ≈ 7700 Cal. The plan is to eat {d} Cal less than your body burns each day. So {d} Cal = 1 day: burn {d} Cal in a workout — the goal is a day closer; eat {d} Cal over the goal — a day further. Days without logged food count as "on plan".'],
-  goal_how_gain: ['1 кг ≈ 7700 ккал. По плану вы каждый день едите на {d} ккал больше, чем тратит организм. Значит, {d} ккал = 1 день: съели на {d} ккал больше нормы — цель на день ближе. Спорт добавляется к норме — съешьте эти калории, чтобы не отстать.', '1 kg ≈ 7700 Cal. The plan is to eat {d} Cal more than your body burns each day. So {d} Cal = 1 day: eat {d} Cal over the goal — a day closer. Sport is added to the goal — eat it back to stay on plan.'],
+  goal_how_text: ['{u}. По плану вы каждый день едите на {d} ккал меньше, чем тратит организм. Значит, {d} ккал = 1 день: сожгли на тренировке {d} ккал — цель на день ближе, съели на {d} ккал больше нормы — на день дальше. Дни без записанной еды и дни, где записано меньше половины нормы (похоже, записали не всё), считаются «по плану».', '{u}. The plan is to eat {d} Cal less than your body burns each day. So {d} Cal = 1 day: burn {d} Cal in a workout — the goal is a day closer; eat {d} Cal over the goal — a day further. Days with no food logged, and days with less than half the goal logged (probably incomplete), count as "on plan".'],
+  goal_how_gain: ['{u}. По плану вы каждый день едите на {d} ккал больше, чем тратит организм. Значит, {d} ккал = 1 день: съели на {d} ккал больше нормы — цель на день ближе. Спорт добавляется к норме — съешьте эти калории, чтобы не отстать.', '{u}. The plan is to eat {d} Cal more than your body burns each day. So {d} Cal = 1 day: eat {d} Cal over the goal — a day closer. Sport is added to the goal — eat it back to stay on plan.'],
   goal_edit: ['✏️ Изменить цель', '✏️ Change goal'],
   goal_del: ['Удалить цель', 'Delete goal'],
   goal_del_q: ['Удалить цель и план?', 'Delete the goal and plan?'],
@@ -199,7 +199,7 @@ const D = {
   bmi_low: ['ниже нормы', 'underweight'],
   bmi_ok: ['норма', 'normal'],
   bmi_over: ['выше нормы', 'overweight'],
-  bmi_obese: ['ожирение', 'obesity'],
+  bmi_obese: ['ожирение', 'obese'],
   weight_chart: ['График веса', 'Weight chart'],
   weight_chart_empty: ['График появится после двух взвешиваний в разные дни.', 'The chart appears after two weigh-ins on different days.'],
   history: ['История', 'History'],
@@ -214,7 +214,7 @@ const D = {
 
   level: ['Уровень', 'Level'],
   points: ['очков', 'points'],
-  to_next: ['До следующего уровня: {n} очков', '{n} points to the next level'],
+  to_next: ['До следующего уровня: {n}', '{n} to the next level'],
   active_streak: ['Дней подряд с записями: {n}', 'Days in a row with entries: {n}'],
   badges: ['Значки', 'Badges'],
   new_badge: ['Новая награда', 'New badge'],
@@ -282,7 +282,7 @@ const D = {
   photo_redo: ['Пересчитать с уточнением', 'Recalculate with the hint'],
 
   menu_ai_hint: ['ИИ придумает меню с рецептами под ваши калории, «не ем» и пожелания. Нужен подключённый ИИ.', 'The AI will create a plan with recipes for your calories, avoid list and wishes. Requires the AI to be connected.'],
-  menu_ai_intro: ['ИИ составит меню на 7 дней с рецептами и списком покупок. Норма: {n} ккал в день. Больше русской домашней кухни.', 'The AI will make a 7-day plan with recipes and a shopping list. Goal: {n} kcal a day. Mostly Russian home cooking.'],
+  menu_ai_intro: ['ИИ составит меню на 7 дней с рецептами и списком покупок. Норма: {n} ккал в день. Больше русской домашней кухни.', 'The AI will make a 7-day plan with recipes and a shopping list. Goal: {n} Cal a day. Mostly Russian home cooking.'],
   menu_wishes: ['Пожелания (по желанию)', 'Wishes (optional)'],
   menu_wishes_ph: ['например: побольше супов, готовить до 30 минут, на ужин что-то лёгкое', 'e.g. more soups, cook in under 30 minutes, something light for dinner'],
   menu_ai_replace: ['Текущее меню будет заменено новым.', 'Your current plan will be replaced.'],
@@ -399,7 +399,7 @@ const D = {
   has_conflict: ['Есть продукты из вашего списка «не ем»', 'Contains foods from your avoid list'],
   servings: ['Порций', 'Servings'],
   steps: ['Как готовить', 'How to cook'],
-  ate_portion: ['Съел(а) порцию — записать', 'I ate a serving — log it'],
+  ate_portion: ['Съел порцию — записать', 'I ate a serving — log it'],
   edit: ['Изменить', 'Edit'],
   recipe_name: ['Название', 'Name'],
   recipe_name_ph: ['Название блюда', 'Dish name'],
@@ -458,7 +458,7 @@ const D = {
   kcal_goal_lbl: ['Норма калорий в день', 'Daily calorie goal'],
   kcal_auto: ['пусто = автоматически ({n})', 'empty = automatic ({n})'],
 
-  backup_text: ['Все записи хранятся только в этом телефоне. Сохраните копию в файл (например, в iCloud Drive через «Сохранить в Файлы»), чтобы ничего не потерять.', 'All your data lives only on this phone. Save a copy to a file (e.g. iCloud Drive via “Save to Files”) so you don’t lose anything.'],
+  backup_text: ['Все записи хранятся только в этом телефоне. Сохраните копию в файл (например, в iCloud Drive через «Сохранить в Файлы»), чтобы ничего не потерять. Семейный пароль ИИ в файл не попадает — после восстановления на новом телефоне впишите его заново.', 'All your data lives only on this phone. Save a copy to a file (e.g. iCloud Drive via “Save to Files”) so you don’t lose anything. The family AI password is not stored in the file — after restoring on a new phone, enter it again.'],
   last_backup: ['Последняя копия', 'Last backup'],
   never: ['ещё не было', 'never'],
   backup_save: ['Сохранить копию', 'Save backup'],
@@ -478,7 +478,7 @@ const D = {
     '<li>Откройте сайт в <b>Safari</b>.</li><li>Нажмите кнопку <b>«Поделиться»</b> — квадрат со стрелкой вверх.</li><li>Прокрутите вниз и выберите <b>«На экран „Домой“»</b>.</li><li>Нажмите <b>«Добавить»</b>. Иконка Здаровенького появится на экране.</li>',
     '<li>Open the site in <b>Safari</b>.</li><li>Tap the <b>Share</b> button — the square with an up arrow.</li><li>Scroll down and choose <b>“Add to Home Screen”</b>.</li><li>Tap <b>“Add”</b>. The Zdarovenkiy icon will appear on your screen.</li>',
   ],
-  install_note: ['После установки программа работает и без интернета. Напоминания работают только в установленной версии.', 'Once installed, the app works offline. Reminders only work in the installed version.'],
+  install_note: ['После установки программа работает и без интернета. Напоминания работают только в установленной версии. Если вы уже вели записи в Safari — сначала сделайте там резервную копию (Ещё → Резервная копия), а в установленной программе восстановите её: сами записи из Safari не переносятся.', 'Once installed, the app works offline. Reminders only work in the installed version. If you already have entries in Safari, make a backup there first (More → Backup) and restore it in the installed app: entries do not move over from Safari by themselves.'],
 
   // --- Часть 4: напоминания ---
   rem_title: ['Напоминания', 'Reminders'],
@@ -582,6 +582,43 @@ const D = {
   yt_links_note: ['Ссылки личные — только для вашего телефона. У каждого в семье свои.', 'These links are personal — for your phone only. Each family member gets their own.'],
   copy: ['Копировать', 'Copy'],
   copied: ['Скопировано ✓', 'Copied ✓'],
+  // --- Размер порции в меню ---
+  por_x: ['порция ×{n}', 'serving ×{n}'],
+  por_note: ['Порции подобраны под вашу норму ({n} ккал в день): «×1,5» — это полторы порции рецепта. В списке покупок и в «Плане готовки» это уже учтено.', 'Servings are sized to your goal ({n} Cal a day): “×1.5” means one and a half servings of the recipe. The shopping list and the cooking plan already account for it.'],
+  por_changed: ['Ваша норма калорий изменилась: была {a}, стала {b} ккал. Порции в меню можно пересчитать (список покупок тоже изменится).', 'Your calorie goal has changed: it was {a}, now {b} Cal. You can resize the servings in the plan (the shopping list will change too).'],
+  por_recalc: ['Пересчитать порции', 'Resize servings'],
+  prep_partial_note: ['{m}: на часть дней не нашлось блюд, которые хорошо хранятся, — в эти дни готовим свежее.', '{m}: for some days there were no dishes that keep well — those days are cooked fresh.'],
+  menu_gaps: ['Для некоторых приёмов пищи не нашлось подходящих блюд (из-за списка «не ем»). Нажмите ↻ и выберите блюдо сами или добавьте свой рецепт.', 'No suitable dishes were found for some meals (because of your avoid list). Tap ↻ to pick a dish yourself, or add your own recipe.'],
+  // --- Что убрано из меню по списку «не ем» ---
+  excl_list: ['Убраны блюда, где есть', 'Leaving out dishes with'],
+  excl_more: ['и ещё {n}', 'and {n} more'],
+  excl_none: ['В рецептах программы таких продуктов нет — менять ничего не пришлось.', 'None of the built-in recipes contain these, so nothing had to change.'],
+  excl_unknown: ['Программа не поняла слова: {w}. Проверьте, нет ли опечатки, или напишите проще (например: «молоко», «орехи», «рыба»). Меню от ИИ эти слова всё равно учтёт.', 'I didn’t understand: {w}. Check for typos or use simpler words (e.g. “milk”, “nuts”, “fish”). The AI menu will still take them into account.'],
+  menu_ai_lost: ['Меню от ИИ не сохранилось — попробуйте составить ещё раз.', 'The AI menu was lost — please try again.'],
+  aie_limit: ['На сегодня лимит запросов к ИИ исчерпан (это защита от лишних трат). Завтра снова заработает.', 'Today’s AI request limit is used up (a spending safeguard). It will work again tomorrow.'],
+  aie_locked: ['Слишком много попыток с неверным паролем. Подождите 15 минут и проверьте семейный пароль в настройках.', 'Too many attempts with a wrong password. Wait 15 minutes and check the family password in Settings.'],
+  ate_f: ['Съела', 'Ate'],
+  ate_portion_f: ['Съела порцию — записать', 'I ate a serving — log it'],
+  // --- Цель по весу: когда план построить нельзя ---
+  goal_unhealthy_low: ['{w} — это меньше здорового веса для вашего роста (он начинается от {lim}). Такую цель программа не ставит: худеть ниже нормы вредно.', '{w} is below the healthy weight for your height (it starts at {lim}). The app won’t set this goal: going under the healthy range is harmful.'],
+  goal_unhealthy_high: ['{w} — это больше здорового веса для вашего роста (он до {lim}). Такую цель программа не ставит.', '{w} is above the healthy weight for your height (it goes up to {lim}). The app won’t set this goal.'],
+  goal_use_limit: ['Поставить цель {w}', 'Set the goal to {w}'],
+  goal_not_healthy: ['Эта цель за пределами здорового веса', 'This goal is outside the healthy range'],
+  goal_no_room: ['Ваш организм тратит около {tdee} ккал в день, а есть меньше {min} ккал небезопасно — урезать еду почти некуда. Здесь лучше худеть движением: каждую записанную тренировку программа засчитает. Поставьте цель поближе или посоветуйтесь с врачом.', 'Your body burns about {tdee} Cal a day, and eating under {min} Cal is not safe — there is almost nothing to cut from food. Here it is better to lose weight by moving more: the app counts every workout you log. Choose a closer goal or talk to a doctor.'],
+  goal_too_low: ['Чтобы успеть к сроку, пришлось бы есть {kcal} ккал в день — это меньше безопасного минимума ({min} ккал). Выберите вариант:', 'To make it in time you would have to eat {kcal} Cal a day — below the safe minimum ({min} Cal). Pick an option:'],
+  profile_goal_note: ['Цель по весу сейчас задаёт план: {w}. Изменить её можно здесь:', 'Your weight goal is now set by the plan: {w}. You can change it here:'],
+  kcal_per_kg: ['1 кг ≈ 7700 ккал', '1 kg ≈ 7,700 Cal'],
+  kcal_per_lb: ['1 фунт ≈ 3500 ккал', '1 lb ≈ 3,500 Cal'],
+  // --- Напоминания отключились сами ---
+  rem_lost: ['Напоминания отключились — включите их заново', 'Reminders got disconnected — turn them on again'],
+  rem_lost_text: ['Напоминания отключились: iPhone отменил подписку (так бывает после переустановки или долгого перерыва). Включите их заново.', 'Reminders got disconnected: the iPhone cancelled the subscription (this happens after a reinstall or a long break). Turn them on again.'],
+  // --- Первый запуск в Safari на iPhone ---
+  install_first: ['Сначала поставьте Здаровенький на главный экран iPhone — и заполняйте всё уже там.', 'First add Zdarovenkiy to your iPhone Home Screen — and fill everything in there.'],
+  install_first_why: ['Почему так: у значка на главном экране своя «память». Записи, сделанные здесь, в Safari, туда не перейдут, а сам Safari может стереть их, если неделю не заходить. Напоминания тоже работают только с главного экрана.', 'Why: the Home Screen icon has its own storage. Entries made here in Safari will not move there, and Safari itself may erase them if you do not visit for a week. Reminders also work only from the Home Screen.'],
+  install_skip: ['Продолжить в браузере', 'Continue in the browser'],
+  restored_need_code: ['Данные восстановлены ✓ Впишите семейный пароль в настройках ИИ и включите напоминания заново.', 'Data restored ✓ Enter the family password in AI settings and turn reminders on again.'],
+  wo_sound_hint: ['Сигналы таймера слышны, только если на iPhone выключен беззвучный режим и прибавлена громкость.', 'Timer beeps are heard only when the iPhone’s silent mode is off and the volume is up.'],
+  wo_screen_hint: ['Если экран гаснет во время тренировки — иногда касайтесь его.', 'If the screen dims during a workout, tap it now and then.'],
 };
 
 export const lang = () => (data.settings.lang === 'en' ? 'en' : 'ru');

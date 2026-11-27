@@ -1,6 +1,11 @@
 // Service worker: чтобы программа открывалась без интернета.
 // Стратегия «сначала сеть»: при интернете всегда свежая версия, без него — сохранённая.
-const CACHE = 'zdorovenkiy-v12';
+// Если интернет есть, но «висит» (слабая связь), ждём недолго и открываем сохранённую версию.
+const CACHE = 'zdorovenkiy-v13';
+const NAV_WAIT_MS = 3000;   // сколько ждём сеть при открытии программы
+const FILE_WAIT_MS = 8000;  // сколько ждём каждый файл, если при открытии сеть ответила
+let cacheUntil = 0;         // сеть при открытии не ответила: до этого времени все файлы берём из сохранённых
+                            // (целиком одну версию — чтобы не смешать новые файлы со старыми)
 const UI_IMG = ['glass-full', 'glass-empty', 'salad', 'camera', 'sneaker', 'dumbbell', 'moon', 'scale', 'calendar', 'bulb',
   'fire', 'star', 'egg', 'soup', 'fish', 'apple', 'family', 'park', 'logo', 'house', 'plate', 'more', 'robot', 'bell', 'nophone', 'trophy',
   'person', 'gear', 'book', 'cart', 'clipboard', 'cloud', 'stopwatch', 'heart', 'target'].map(n => `./img/ui/${n}.webp`);
@@ -57,15 +62,34 @@ self.addEventListener('notificationclick', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then(res => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(req, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))),
-  );
+  const nav = req.mode === 'navigate';
+  const saved = () => caches.match(req, { ignoreSearch: true });
+  e.respondWith((async () => {
+    if (!nav && Date.now() < cacheUntil) {
+      const hit = await saved();
+      if (hit) return hit;
+    }
+    const net = fetch(req);
+    net.catch(() => { /* обработаем ниже */ });
+    let res = null;
+    try {
+      res = await Promise.race([net, new Promise(ok => setTimeout(ok, nav ? NAV_WAIT_MS : FILE_WAIT_MS, null))]);
+    } catch { /* сети нет */ }
+    if (res) {
+      if (nav) cacheUntil = 0;
+      if (res.ok) {
+        const copy = res.clone();
+        e.waitUntil(caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {}));
+      }
+      return res;
+    }
+    // Сеть не ответила вовремя (или её нет) — сохранённая версия
+    const hit = (await saved()) || (nav ? await caches.match('./index.html') : null);
+    if (hit) {
+      if (nav) cacheUntil = Date.now() + 30_000;
+      return hit;
+    }
+    // Сохранённого нет — ждём сеть до конца
+    try { return await net; } catch { return (await caches.match('./index.html')) || Response.error(); }
+  })());
 });

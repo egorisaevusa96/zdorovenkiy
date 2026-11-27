@@ -624,3 +624,23 @@ form:has(input[name="prepOn"][value="0"]:checked) .prep-meals { display: none; }
 .legend i.lg-plan { border-top: 2px dashed var(--muted); }
 .goal-days small { display: block; color: var(--muted); margin-top: 2px; }
 .goal-link { margin-top: 6px; }
+
+/* ---------- Правки после проверки: кнопки под палец, узкие экраны, список «не ем» ---------- */
+/* Маленькие круглые кнопки выглядят как раньше, но область нажатия у них теперь не меньше 44 px */
+.x, .mini, .minus, .datebar button { position: relative; }
+.x::after, .mini::after, .minus::after, .datebar button::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+.eat { min-height: 40px; }
+/* Что программа убрала из меню по списку «не ем» */
+.excl { display: flex; flex-direction: column; gap: 4px; background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.excl .bad { font-size: 14px; }
+/* Карточка «Еда» на узком экране (iPhone SE): названия приёмов пищи не налезают на калории */
+.meals .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 360px) {
+  .food-b { gap: 6px; }
+  .meals { padding: 4px 8px; }
+  .meals li { font-size: 13px; gap: 5px; }
+  .meals .i3 { width: 22px; height: 22px; }
+  .photo-btn { width: 84px; }
+  .photo-btn .i3 { width: 56px; height: 56px; }
+  .photo-btn span { font-size: 13px; padding: 9px 6px 7px; }
+}
